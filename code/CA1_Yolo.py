@@ -95,25 +95,36 @@ def draw_boundbox(img, boxes, labels, thresh):
     return img
 #--------------------------------------------
 #---------- YOLOv3 Model----------
-def CreateYoloLyr(inputs, convLyrs, skip=True):
-    '''Create yolo layer'''
-    x = inputs
-    loopCounter = 0
-    for convLyr in convLyrs:
-        if loopCounter == (len(convLyrs)-2) and skip:
-            skip_connection = x
-        loopCounter += 1
-        if convLyr['strides'] > 1: 
-            x = ZeroPadding2D(((1,0),(1,0)), name='zeropad_'+str(convLyr['lyrName']))(x)
-        x = Conv2D(filters=convLyr['filters'], 
-                   kernel_size=convLyr['kernel_size'], 
-                   strides=convLyr['strides'], 
-                   padding='valid' if convLyr['strides']> 1 else 'same',  
-                   use_bias=False if convLyr['bnorm'] else True, 
-                   name='conc2d_'+str(convLyr['lyrName']))(x)
-        if convLyr['bnorm']:
-            x = BatchNormalization(epsilon=0.001, name='bnorm_idx_'+str(convLyr['lyrName']))(x)
-        if convLyr['leakyRelu']:
-            x = LeakyReLU(alpha=0.1, name='leakyrelu_idx_'+str(convLyr['lyrName']))(x)
-    return add([skip_connection, x]) if skip else x
+default_yolo_anchors = np.array([(10,13), (16,30), (33,23),
+                                 (30,61), (62,45), (59,119),
+                                 (116,90), (156,198), (373,326)],
+                                 np.float32) / 416
+default_yolo_anchors_mask = np.array([[6,7,8], [3,4,5], [0,1,2]])
+
+# def createYoloLyr(inputs, convLyrs, skip=True):
+#     '''Create yolo layer'''
+#     x = inputs
+#     loopCounter = 0
+#     for convLyr in convLyrs:
+#         if loopCounter == (len(convLyrs)-2) and skip:
+#             skip_connection = x
+#         loopCounter += 1
+#         if convLyr['strides'] > 1: 
+#             x = ZeroPadding2D(((1,0),(1,0)), name='zeropad_'+str(convLyr['lyrName']))(x)
+#         x = Conv2D(filters=convLyr['filters'], 
+#                    kernel_size=convLyr['kernel_size'], 
+#                    strides=convLyr['strides'], 
+#                    padding='valid' if convLyr['strides']> 1 else 'same',  
+#                    use_bias=False if convLyr['bnorm'] else True, 
+#                    name='conc2d_'+str(convLyr['lyrName']))(x)
+#         if convLyr['bnorm']:
+#             x = BatchNormalization(epsilon=0.001, name='bnorm_idx_'+str(convLyr['lyrName']))(x)
+#         if convLyr['leakyRelu']:
+#             x = LeakyReLU(alpha=0.1, name='leakyrelu_idx_'+str(convLyr['lyrName']))(x)
+#     return add([skip_connection, x]) if skip else x
+
+# def YoloConvLyr(x, filters, )
+
+# def createYolov3Model(inputs):
+
 #---------------------------------
