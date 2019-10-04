@@ -1,11 +1,12 @@
 # ISS VSE CA1
 
-
+#%%
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import cv2
 
+from keras import regularizers
 from keras.models import Model
 from keras.layers import Conv2D
 from keras.layers import Input
@@ -15,8 +16,28 @@ from keras.layers import ZeroPadding2D
 from keras.layers import UpSampling2D
 from keras.layers import AveragePooling2D
 from keras.layers import Flatten
-from keras.layers.merge import add, concatenate
+from keras.layers.merge import add
+from keras.layers.merge import concatenate
 
+
+#%%
+#----------Config----------
+NUM_CLASSES = 2
+#--------------------------
+#%%
+#---------- API for YoloV3 ----------
+class YoloV3():
+    def __init__(self, *args, **kwargs):
+        # super().__init__(*args, **kwargs):
+        pass
+    def fit(self):
+        pass
+    def fit_generator(self):
+        pass
+    def predict(self):
+        pass
+#------------------------------------
+#%%
 #---------- Class for Bounding Box + util functions ----------
 class BoundingBox:
     '''Bounding Box definition'''
@@ -77,13 +98,13 @@ def draw_boundbox(img, boxes, labels, thresh):
     for box in boxes:
         label_str=''
         label = None
-        for idx in range(len(lables)):
-            if box.classes[i] > thresh:
+        for idx in range(len(labels)):
+            if box.classes[idx] > thresh:
                 if label_str != '': label_str +=', '
-                label_str += (labels[i] + ' ' + str(round(box.get_score() * 100, 2)) + '%')
-                label = i
+                label_str += (labels[idx] + ' ' + str(round(box.get_score() * 100, 2)) + '%')
+                label = idx
         if label >= 0:
-            text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, image.shape[0], 5)
+            text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, img.shape[0], 5)
             width, height = text_size[0][0], text_size[0][1]
             region = np.array([[box.xmin-3, box.ymin],
                                [box.xmin-3, box.ymin-height-26],
@@ -91,9 +112,10 @@ def draw_boundbox(img, boxes, labels, thresh):
                                [box.xmin+width+13, box.ymin]], dtype='int32')
             cv2.rectangle(img=img, pt1=(box.xmin, box.ymin), pt2=(box.xmax, box.ymax), color=getBoundBoxColor(label), thickness=4)
             cv2.fillPoly(img=img, pts=[region], color=getBoundBoxColor(label))
-            cv2.putText(img=img, text=label_str, org=(box.xmin+13, box.ymin-13), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontscale=image.shape[0], color=(0, 0, 0), thickness=2)
+            cv2.putText(img=img, text=label_str, org=(box.xmin+13, box.ymin-13), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontscale=img.shape[0], color=(0, 0, 0), thickness=2)
     return img
 #--------------------------------------------
+#%%
 #---------- YOLOv3 Model----------
 default_yolo_anchors = np.array([(10,13), (16,30), (33,23),
                                  (30,61), (62,45), (59,119),
@@ -101,30 +123,101 @@ default_yolo_anchors = np.array([(10,13), (16,30), (33,23),
                                  np.float32) / 416
 default_yolo_anchors_mask = np.array([[6,7,8], [3,4,5], [0,1,2]])
 
-# def createYoloLyr(inputs, convLyrs, skip=True):
-#     '''Create yolo layer'''
-#     x = inputs
-#     loopCounter = 0
-#     for convLyr in convLyrs:
-#         if loopCounter == (len(convLyrs)-2) and skip:
-#             skip_connection = x
-#         loopCounter += 1
-#         if convLyr['strides'] > 1: 
-#             x = ZeroPadding2D(((1,0),(1,0)), name='zeropad_'+str(convLyr['lyrName']))(x)
-#         x = Conv2D(filters=convLyr['filters'], 
-#                    kernel_size=convLyr['kernel_size'], 
-#                    strides=convLyr['strides'], 
-#                    padding='valid' if convLyr['strides']> 1 else 'same',  
-#                    use_bias=False if convLyr['bnorm'] else True, 
-#                    name='conc2d_'+str(convLyr['lyrName']))(x)
-#         if convLyr['bnorm']:
-#             x = BatchNormalization(epsilon=0.001, name='bnorm_idx_'+str(convLyr['lyrName']))(x)
-#         if convLyr['leakyRelu']:
-#             x = LeakyReLU(alpha=0.1, name='leakyrelu_idx_'+str(convLyr['lyrName']))(x)
-#     return add([skip_connection, x]) if skip else x
+def createYoloLyr(inputs, convLyrs, skip=True):
+    '''Create yolo layer'''
+    x = inputs
+    loopCounter = 0
+    for convLyr in convLyrs:
+        if loopCounter == (len(convLyrs)-2) and skip:
+            skip_connection = x
+        loopCounter += 1
+        if convLyr['strides'] > 1: 
+            x = ZeroPadding2D(((1,0),(1,0)))(x)
+        x = Conv2D(filters=convLyr['filters'], 
+                   kernel_size=convLyr['kernel_size'], 
+                   strides=convLyr['strides'], 
+                   padding='valid' if convLyr['strides']> 1 else 'same',  
+                   use_bias=False if convLyr['bnorm'] else True,
+                   kernel_regularizer=regularizers.l2(0.0001))(x)
+        if convLyr['bnorm']:
+            x = BatchNormalization(epsilon=0.001)(x)
+        if convLyr['leakyRelu']:
+            x = LeakyReLU(alpha=0.1)(x)
+    return add([skip_connection, x]) if skip else x
 
-# def YoloConvLyr(x, filters, )
 
-# def createYolov3Model(inputs):
-
+def YoloV3():
+    img = Input(shape=(None,None,3))
+    x = createYoloLyr(x, [
+        {'filters': 32, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 64, 'kernel_size': 3, 'strides': 2, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 32, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 64, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    x = createYoloLyr(x, [
+        {'filters': 128, 'kernel_size': 3, 'strides': 2, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 64, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 128, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    x = createYoloLyr(x, [
+        {'filters': 64, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 128, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    x = createYoloLyr(x, [
+        {'filters': 256, 'kernel_size': 3, 'strides': 2, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    for _ in range(7):
+        x = createYoloLyr(x, [
+            {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+            {'filters': 256, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    out1 = x
+    x = createYoloLyr(x, [
+        {'filters': 512, 'kernel_size': 3, 'strides': 2, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 512, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    for _ in range(7):
+        x = createYoloLyr(x, [
+            {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+            {'fitlers': 512, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    out2 = x
+    x = createYoloLyr(x, [
+        {'filters': 1024, 'kernel_size': 3, 'strides': 2, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 512, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 1024, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    for _ in range(3):
+        x = createYoloLyr(x, [
+            {'filters': 512, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+            {'filters': 1024, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True}])
+    x = createYoloLyr(x, [
+        {'filters': 512, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 1024, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 512, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 1024, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 512, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
+    smallPred = createYoloLyr(x, [
+        {'filters': 1024, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': (3*(5 + NUM_CLASSES)), 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
+    x = createYoloLyr(x, [{'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}])
+    x = UpSampling2D(2)(x)
+    x = concatenate([x, out2])
+    x = createYoloLyr(x, [
+        {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 512, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 512, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
+    midPred = createYoloLyr(x, [
+        {'filters': 512, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': (3*(5 + NUM_CLASSES)), 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
+    x = createYoloLyr(x, [
+        {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
+    x = UpSampling2D(2)(x)
+    x = concatenate([x, out1])
+    bigPred = createYoloLyr(x, [
+        {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': (3*(5+ NUM_CLASSES)), 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
 #---------------------------------
+
