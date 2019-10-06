@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import cv2
+import tensorflow as tf
 
 import imgaug as ia
 from imgaug import augmenters as iaa
@@ -232,6 +233,27 @@ def createYoloLyr(inputs, convLyrs, skip=True):
         if convLyr['leakyRelu']:
             x = LeakyReLU(alpha=0.1)(x)
     return add([skip_connection, x]) if skip else x
+
+def yoloBox(x, anchors, classes):
+    grid_size = tf.shape(x)[1]
+    box_xy, box_wh, objectscore, class_probs = tf.split(x, (2,2,1,classes), axis=-1)
+    box_xy = tf.sigmoid(box_xy)
+    objectscore = tf.sigmoid(objectscore)
+    class_probs = tf.sigmoid(class_probs)
+    x_box = tf.concat((box_xy, box_wh), axis=-1)
+
+    grid = tf.meshgrid(tf.range(grid_size), tf.range(grid_size))
+    grid = tf.expand_dims(tf.stack(grid, axis=-1), axis=2)
+
+    box_xy = (box_xy + tf.cast(grid, tf.float32)) / tf.cast(grid_size, tf.float32)
+    box_wh = tf.exp(box_wh) * anchors
+    box_x1y1 = box_xy - box_wh / 2
+    box_x2y2 = box_xy - box_wh / 2
+    bbox = tf.concat([box_x1y1, box_x2y2], axis=-1)
+
+    return bbox, objectscore, class_probs, x_box
+
+
 
 def YoloV3():
     img = Input(shape=(None,None,3))
