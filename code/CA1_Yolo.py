@@ -6,6 +6,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import cv2
 import tensorflow as tf
+import os
+import xml.etree.ElementTree as ET
+import pickle
 
 import imgaug as ia
 from imgaug import augmenters as iaa
@@ -24,6 +27,7 @@ from keras.layers.merge import add
 from keras.layers.merge import concatenate
 from keras.applications.nasnet import preprocess_input
 from keras.engine.topology import Layer
+from keras.utils import Sequence
 
 #%%
 #----------Config----------
@@ -45,7 +49,7 @@ class YoloV3():
 #------------------------------------
 #%%
 #----------Data generator with Imgaug----------
-class DataGenerator(keras.util.Sequence):
+class DataGenerator(Sequence):
     '''Generate data with augmentations'''
     def __init__(self, image_path, labels, batch_size=32, image_dims=(416, 416, 3), shuffle=False, augment=True):
         self.image_path=image_path
@@ -122,6 +126,24 @@ class DataGenerator(keras.util.Sequence):
         ], random_order=True)
         return seq.augment_images(images)
 #----------------------------------------------
+#%%
+#----------VOC Parser----------
+def read_voc(xml_file: str):
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    list_with_all_boxes = []
+    for boxes in root.iter('object'):
+        filename = root.find('filename').text
+        ymin, xmin, ymax, xmax = None, None, None, None
+        for box in boxes.findall("bndbox"):
+            ymin = int(box.find("ymin").text)
+            xmin = int(box.find("xmin").text)
+            ymax = int(box.find("ymax").text)
+            xmax = int(box.find("xmax").text)
+        list_with_single_boxes = [xmin, ymin, xmax, ymax]
+        list_with_all_boxes.append(list_with_single_boxes)
+    return filename, list_with_all_boxes
+#------------------------------
 #%%
 #---------- Class for Bounding Box + util functions ----------
 class BoundingBox:
@@ -283,10 +305,10 @@ class YoloLossLayer(Layer):
         class_delta = object_mask * \
                       tf.expand_dims(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=true_box_class, logits=pred_box_class), 4)
 
-        loss_xy    = tf.reduce_sum(tf.square(xy_delta),       list(range(1,5)))
-        loss_wh    = tf.reduce_sum(tf.square(wh_delta),       list(range(1,5)))
-        loss_conf  = tf.reduce_sum(tf.square(conf_delta),     list(range(1,5)))
-        loss_class = tf.reduce_sum(class_delta,               list(range(1,5)))
+        loss_xy    = tf.reduce_sum(tf.square(xy_delta), list(range(1,5)))
+        loss_wh    = tf.reduce_sum(tf.square(wh_delta), list(range(1,5)))
+        loss_conf  = tf.reduce_sum(tf.square(conf_delta), list(range(1,5)))
+        loss_class = tf.reduce_sum(class_delta, list(range(1,5)))
         return loss_xy + loss_wh + loss_conf + loss_class 
 #------------------------------
 #%%
@@ -318,25 +340,6 @@ def createYoloLyr(inputs, convLyrs, skip=True):
         if convLyr['leakyRelu']:
             x = LeakyReLU(alpha=0.1)(x)
     return add([skip_connection, x]) if skip else x
-
-def yoloBox(x, anchors, classes):
-    grid_size = tf.shape(x)[1]
-    box_xy, box_wh, objectscore, class_probs = tf.split(x, (2,2,1,classes), axis=-1)
-    box_xy = tf.sigmoid(box_xy)
-    objectscore = tf.sigmoid(objectscore)
-    class_probs = tf.sigmoid(class_probs)
-    x_box = tf.concat((box_xy, box_wh), axis=-1)
-
-    grid = tf.meshgrid(tf.range(grid_size), tf.range(grid_size))
-    grid = tf.expand_dims(tf.stack(grid, axis=-1), axis=2)
-
-    box_xy = (box_xy + tf.cast(grid, tf.float32)) / tf.cast(grid_size, tf.float32)
-    box_wh = tf.exp(box_wh) * anchors
-    box_x1y1 = box_xy - box_wh / 2
-    box_x2y2 = box_xy - box_wh / 2
-    bbox = tf.concat([box_x1y1, box_x2y2], axis=-1)
-
-    return bbox, objectscore, class_probs, x_box
 
 def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
     img = Input(shape=(None,None,3))
