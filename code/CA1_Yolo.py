@@ -84,57 +84,16 @@ class DataGenerator(Sequence):
     #     images = np.array([preprocess_input(img) for img in images])
     #     return images, labels
     
-    def augmentation(self, images):
+    def augmentation_with_boundingboxes(self, images, bbs):
         '''Image augmentation with imgaug'''
-        st = lambda aug: iaa.Sometimes(0.5, aug)
         seq = iaa.Sequential([
-            iaa.Fliplr(0.5), # Horizontal flip for 50% of all images
-            iaa.Flipud(0.5), # Vertial flip for 50% of all images
-            st(iaa.Affine(
-                scale={"x":(0.9,1.1), "y":(0.9,1.1)}, # Scale images per axis
-                translate_percent={"x":(-0.1,0.1), "y":(-0.1,0.1)}, # Translation per axis
-                rotate=(-10,10), # Rotate by +/- 45 degrees
-                shear=(-5,5), # Shear +/- 16 degrees
-                order=[0,1],
-                cval=[0,1],
-                mode=ia.ALL
-            )),
-            iaa.SomeOf((0,5),
-                        [st(iaa.Superpixels(p_replace=(0,1.0), n_segments=(20,200))),
-                        iaa.OneOf([
-                            iaa.GaussianBlur((0,1,0)),
-                            iaa.AverageBlur(k=(3,5)),
-                            iaa.MedianBlur(k=(3,5))
-                        ]),
-                        iaa.Sharpen(alpha=(0,1.0), lightness=(0.9,1.1)),
-                        iaa.Emboss(alpha=(0,1.0), strength=(0,2.0)),
-                        iaa.SimplexNoiseAlpha(iaa.OneOf([
-                            iaa.EdgeDetect(alpha=(0.5,1.0)),
-                            iaa.DirectedEdgeDetect(alpha=(0.5,1.0),
-                                                    direction=(0.0,1.0)),
-                        ])),
-                        iaa.AdditiveGaussianNoise(loc=0, scale=(0.0,0.1*255), per_channel=0.5),
-                        iaa.OneOf([
-                            iaa.Dropout((0.01,0.05), per_channel=0.5),
-                            iaa.CoarseDropout((0.01,0.03), size_percent=(0.01,0.02), per_channel=0.2),
-                        ]),
-                        iaa.Invert(0.01, per_channel=True),
-                        iaa.Add((-2,2), per_channel=0.5),
-                        iaa.AddToHueAndSaturation((-1,1)),
-                        iaa.OneOf([
-                            iaa.Multiply((0.9,1.1), per_channel=0.5),
-                            iaa.FrequencyNoiseAlpha(exponent=(-1,0), first=iaa.Multiply((0.9,1.1), per_channel=True), second=iaa.ContrastNormalization((0.9,1.1)))
-                        ]),
-                        st(iaa.ElasticTransformation(alpha=(0.5,3.5), sigma=0.25)),
-                        st(iaa.PiecewiseAffine(scale=(0.01, 0.05))),
-                        st(iaa.PerspectiveTransform(scale=(0.01,0.1)))
-                        ], random_order=True),
-
-        ], random_order=True)
-        return seq.augment_images(images)
+            iaa.AdditiveGaussianNoise(scale=0.05*255),
+            iaa.Affine(translate_px={"x": (1, 5)})
+        ])
+        return seq(images=images, bounding_boxes=bbs)
     
     def __getitem__(self, index):
-        
+        pass
 #----------------------------------------------
 #%%
 #----------VOC Parser----------
@@ -177,6 +136,10 @@ def read_annotation_files(image_dir, annnotation_dir):
                             if 'ymax' in dim.tag:
                                 obj['ymax'] = int(round(float(dim.text)))
         if len(img['object']) > 0:
+            bb_list = []
+            for obj in img['object']:
+                bb_list.append(ia.BoundingBox(x1=obj['xmin'], y1=obj['ymin'], x2=obj['xmax'], y2=obj['ymax'], label=obj['name']))
+            img['bbs'] = ia.BoundingBoxesOnImage(bb_list, shape=(img['width'], img['height']))
             all_annotations += [img]
     return all_annotations, labels
 #------------------------------
