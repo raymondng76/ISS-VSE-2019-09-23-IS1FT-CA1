@@ -134,21 +134,42 @@ class DataGenerator(Sequence):
 #----------------------------------------------
 #%%
 #----------VOC Parser----------
-def read_voc(xml_file: str):
-    tree = ET.parse(xml_file)
-    root = tree.getroot()
-    list_with_all_boxes = []
-    for boxes in root.iter('object'):
-        filename = root.find('filename').text
-        ymin, xmin, ymax, xmax = None, None, None, None
-        for box in boxes.findall("bndbox"):
-            ymin = int(box.find("ymin").text)
-            xmin = int(box.find("xmin").text)
-            ymax = int(box.find("ymax").text)
-            xmax = int(box.find("xmax").text)
-        list_with_single_boxes = [xmin, ymin, xmax, ymax]
-        list_with_all_boxes.append(list_with_single_boxes)
-    return filename, list_with_all_boxes
+def read_annotation_files(image_dir, annnotation_dir):
+    all_annotations = []
+    for anno in sorted(os.listdir(annnotation_dir)):
+        img = {'object':[]}
+        try:
+            xml_tree = ET.parse(annnotation_dir + anno)
+        except Exception as ex:
+            print(ex)
+            print(f'Error parsing annotation xml: {annnotation_dir + anno}')
+            continue
+        for elem in xml_tree.iter():
+            if 'filename' in elem.tag:
+                img['filename'] = image_dir + elem.text
+            if 'width' in elem.tag:
+                img['width'] = int(elem.text)
+            if 'height' in elem.tag:
+                img['height'] = int(elem.text)
+            if 'object' in elem.tag:
+                obj = {}
+                for attribute in list(elem):
+                    if 'name' in attribute.tag:
+                        obj['name'] = attribute.text
+                        img['object'] += [obj]
+                    if 'bndbox' in attribute.tag:
+                        for dim in list(attribute):
+                            if 'xmin' in dim.tag:
+                                obj['xmin'] = int(round(float(dim.text)))
+                            if 'ymin' in dim.tag:
+                                obj['ymin'] = int(round(float(dim.text)))
+                            if 'xmax' in dim.tag:
+                                obj['xmax'] = int(round(float(dim.text)))
+                            if 'ymax' in dim.tag:
+                                obj['ymax'] = int(round(float(dim.text)))
+        if len(img['object']) > 0:
+            all_annotations += [img]
+    return all_annotations
 #------------------------------
 #%%
 #---------- Class for Bounding Box + util functions ----------
