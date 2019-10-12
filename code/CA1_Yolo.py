@@ -9,6 +9,7 @@ import tensorflow as tf
 import os
 import xml.etree.ElementTree as ET
 import pickle
+import random as rand
 
 import imgaug as ia
 from imgaug import augmenters as iaa
@@ -49,16 +50,61 @@ class YoloV3():
 #------------------------------------
 #%%
 #----------Generate Anchor boxes----------
+def calculate_iou(anno, centroids):
+    anno_width, anno_height = anno
+    iou_list = []
+    anno_area = anno_width * anno_height
+    for cent in centroids:
+        cent_width, cent_height = cent
+        if cent_width <= anno_width and cent_height >= anno_height:
+            iou = cent_width * anno_height / (anno_area + cent_width * (cent_height - anno_height))
+        elif cent_width >= anno_width and cent_height >= anno_height:
+            iou = anno_area / (cent_width * cent_height)
+        elif cent_width >= anno_width and cent_height <= anno_height:
+            iou = anno_width / cent_height / (anno_area + (cent_width - anno_width) * cent_height)
+        else:
+            iou = (cent_width * cent_height) / anno_area
+        iou_list.append(iou)
+    return np.array(iou_list)
+
+def calculate_kMeans(anno_arr, num_anchor):
+    curr_assign_centroids = np.zeros(anno_arr.shape[0])
+    curr_distances = np.zeros((anno_arr.shape[0], num_anchor))
+    indexes = [rand.randrange(anno_arr.shape[0]) for anchor in range(num_anchor)]
+    sample_centroids = anno_arr[indexes]
+    final = sample_centroids.copy()
+    iterations = 0
+    while True:
+        iterations += 1
+        distances = []
+        for idx in range(anno_arr.shape[0]):
+            distance = 1 - calculate_iou(anno_arr[idx], sample_centroids)
+            distances.append(distance)
+        distances_arr = np.array(distances)
+        print(f'iter: {iterations} distances: {np.sum(np.abs(curr_distances-distances_arr))}')
+        assign_centroids = np.argmin(distances_arr, axis=1)
+        if (assign_centroids == curr_assign_centroids).all():
+            return assign_centroids
+        centroid_sums = np.zeros((num_anchor, anno_arr.shape[1]), np.float)
+        for idx in range(anno_arr.shape[0]):
+            centroid_sums[assign_centroids[idx]] += anno_arr[idx]
+        for idx in range(num_anchor):
+            sample_centroids[idx] = centroid_sums[idx] / (np.sum(assign_centroids==idx) + 1e-6)
+        curr_assign_centroids = assign_centroids.copy()
+        curr_distances = distances_arr.copy()
+
+#Reference https://lars76.github.io/object-detection/k-means-anchor-boxes/
 def generateAnchorBoxes(annotations, labels, num_anchor=9):
     annotation_dims = []
     for anno in annotations:
-        
+        for obj in anno['object']:
+            rel_width = (float(obj['xmax']) - float(obj['xmin'])) / anno['width']
+            rel_height = (float(obj['ymax']) - float(obj['ymin'])) / anno['height']
+            annotation_dims.append(tuple(map(float,(rel_width, rel_height))))
 
-def calculate_iou(annotation, centroids):
-    x = np.minimum(clusters[:,0], bo)
+    anno_arr = np.array(annotation_dims)
+    centroids = calculate_kMeans(anno_arr, num_anchor)
 
-#Reference https://lars76.github.io/object-detection/k-means-anchor-boxes/
-def kmeans(annotation_dims, cluster):
 
 #-----------------------------------------
 #%%
