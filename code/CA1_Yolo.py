@@ -104,8 +104,11 @@ def generateAnchorBoxes(annotations, labels, num_anchor=9):
 
     anno_arr = np.array(annotation_dims)
     centroids = calculate_kMeans(anno_arr, num_anchor)
-
-
+    centroids_sorted = centroids[centroids[:,0].argsort()]
+    anchor_box = []
+    for cent in centroids_sorted:
+        anchor_box.append(((int(cent[0]*416)),(int(cent[1]*416))))
+    return anchor_box
 #-----------------------------------------
 #%%
 #----------Data generator with Imgaug----------
