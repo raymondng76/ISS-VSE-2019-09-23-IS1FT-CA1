@@ -49,8 +49,14 @@ class YoloV3():
 #------------------------------------
 #%%
 #----------Data generator with Imgaug----------
+#Refering to https://keras.io/utils/ (Sequence)
 class DataGenerator(Sequence):
-    '''Generate data with augmentations'''
+    '''Generate data with augmentations using Keras Util Sequence API
+        Required Methods:
+        def __init__(self)
+        def __len__(self)
+        def on_epoch_end(self)
+        def __getitem__(self)'''
     def __init__(self, image_path, labels, batch_size=32, image_dims=(416, 416, 3), shuffle=False, augment=True):
         self.image_path=image_path
         self.labels=labels
@@ -225,6 +231,11 @@ def draw_boundbox(img, boxes, labels, thresh):
 #----------Loss Layer----------
 # Refering to this https://keras.io/layers/writing-your-own-keras-layers/
 class YoloLossLayer(Layer):
+    '''Use Keras API for layer creation to create custom layer for loss calculation
+        Required methods:
+        def __init__(self)
+        def build(self)
+        def call(self)'''
     def __init__(self, anchors, max_grid, batch_size, threshold, **kwargs):
         self.anchors = tf.constant(anchors, dtype='float', shape=[1,1,1,3,2])
         maxgrid_h, maxgrid_w = max_grid
