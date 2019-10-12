@@ -61,7 +61,7 @@ def calculate_iou(anno, centroids):
         elif cent_width >= anno_width and cent_height >= anno_height:
             iou = anno_area / (cent_width * cent_height)
         elif cent_width >= anno_width and cent_height <= anno_height:
-            iou = anno_width / cent_height / (anno_area + (cent_width - anno_width) * cent_height)
+            iou = anno_width * cent_height / (anno_area + (cent_width - anno_width) * cent_height)
         else:
             iou = (cent_width * cent_height) / anno_area
         iou_list.append(iou)
