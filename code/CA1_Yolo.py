@@ -48,6 +48,20 @@ class YoloV3():
         pass
 #------------------------------------
 #%%
+#----------Generate Anchor boxes----------
+def generateAnchorBoxes(annotations, labels, num_anchor=9):
+    annotation_dims = []
+    for anno in annotations:
+        
+
+def calculate_iou(annotation, centroids):
+    x = np.minimum(clusters[:,0], bo)
+
+#Reference https://lars76.github.io/object-detection/k-means-anchor-boxes/
+def kmeans(annotation_dims, cluster):
+
+#-----------------------------------------
+#%%
 #----------Data generator with Imgaug----------
 #Refering to https://keras.io/utils/ (Sequence)
 class DataGenerator(Sequence):
@@ -93,7 +107,8 @@ class DataGenerator(Sequence):
         return seq(images=images, bounding_boxes=bbs)
     
     def __getitem__(self, index):
-        pass
+        index = self.index[index * self.batch_size : (index + 1) * self.batch_size]
+        labels = np.array
 #----------------------------------------------
 #%%
 #----------VOC Parser----------
