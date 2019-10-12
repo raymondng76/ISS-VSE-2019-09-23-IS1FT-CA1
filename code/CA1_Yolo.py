@@ -40,10 +40,10 @@ class YoloV3():
     def __init__(self, *args, **kwargs):
         # super().__init__(*args, **kwargs):
         pass
-    def fit(self):
-        pass
-    def fit_generator(self):
-        pass
+    def fit(self, img_dir, annotation_dir):
+        all_anno, labels = read_annotation_files(img_dir, annotation_dir)
+    def fit_generator(self, img_dir, annotation_dir):
+        all_anno, labels = read_annotation_files(img_dir, annotation_dir)        
     def predict(self):
         pass
 #------------------------------------
@@ -57,6 +57,7 @@ class DataGenerator(Sequence):
         def __len__(self)
         def on_epoch_end(self)
         def __getitem__(self)'''
+
     def __init__(self, image_path, labels, batch_size=32, image_dims=(416, 416, 3), shuffle=False, augment=True):
         self.image_path=image_path
         self.labels=labels
@@ -72,16 +73,16 @@ class DataGenerator(Sequence):
         if self.shuffle:
             np.random.shuffle(self.index)
     
-    def generatesinglebatchdata(self, index):
-        '''Generate a batch of data'''
-        indexes = self.index[index * self.batch_size:(index + 1) * self.batch_size]
-        labels=np.array([self.labels[k] for k in indexes])
-        images = [cv2.imread(self.image_path[k]) for k in indexes]
+    # def generatesinglebatchdata(self, index):
+    #     '''Generate a batch of data'''
+    #     indexes = self.index[index * self.batch_size:(index + 1) * self.batch_size]
+    #     labels=np.array([self.labels[k] for k in indexes])
+    #     images = [cv2.imread(self.image_path[k]) for k in indexes]
     
-        if self.augment:
-            images = self.augmentation(images)
-        images = np.array([preprocess_input(img) for img in images])
-        return images, labels
+    #     if self.augment:
+    #         images = self.augmentation(images)
+    #     images = np.array([preprocess_input(img) for img in images])
+    #     return images, labels
     
     def augmentation(self, images):
         '''Image augmentation with imgaug'''
@@ -131,11 +132,15 @@ class DataGenerator(Sequence):
 
         ], random_order=True)
         return seq.augment_images(images)
+    
+    def __getitem__(self, index):
+        
 #----------------------------------------------
 #%%
 #----------VOC Parser----------
 def read_annotation_files(image_dir, annnotation_dir):
     all_annotations = []
+    labels = []
     for anno in sorted(os.listdir(annnotation_dir)):
         img = {'object':[]}
         try:
@@ -156,6 +161,10 @@ def read_annotation_files(image_dir, annnotation_dir):
                 for attribute in list(elem):
                     if 'name' in attribute.tag:
                         obj['name'] = attribute.text
+                        if obj['name'] in labels:
+                            labels[obj['name']] += 1
+                        else:
+                            labels[obj['name']] = 1
                         img['object'] += [obj]
                     if 'bndbox' in attribute.tag:
                         for dim in list(attribute):
@@ -169,7 +178,7 @@ def read_annotation_files(image_dir, annnotation_dir):
                                 obj['ymax'] = int(round(float(dim.text)))
         if len(img['object']) > 0:
             all_annotations += [img]
-    return all_annotations
+    return all_annotations, labels
 #------------------------------
 #%%
 #---------- Class for Bounding Box + util functions ----------
