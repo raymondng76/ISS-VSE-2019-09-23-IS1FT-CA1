@@ -237,87 +237,28 @@ class DataGenerator(Sequence):
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             raw_img = cv2.imread(anno['filename'])
             img, bbs = self.augmentation_with_boundingboxes(raw_img, anno['bbs'])
+            for box in bbs.BoundingBox:
+                max_anchor, max_index = _get_best_anchor(box)
+                yolo_out = all_out[max_index//3]
+                yolo_grid_height, yolo_grid_width = yolo_out.shape[1:3]
+
+
+    def _get_best_anchor(self, boundbox):
+        '''Compare bounding box with all anchors and find best match'''
+        max_anchor = None
+        max_index = -1
+        max_iou = -1
+        bb = ia.BoundingBox(x1=0.0, y1=0.0, x2=boundbox.bounding_boxes[0].x2, y2=boundbox.bounding_boxes[0].y2)
+        for idx in range(len(self.anchors)):
+            anchor = ia.BoundingBox(x1=0.0,y1=0.0,x2=self.anchors[idx][0],y2=self.anchors[idx][1])
+            iou = bb.iou(anchor)
+            if max_iou < iou:
+                max_anchor = anchor
+                max_index = idx
+                max_iou = iou
+        return max_anchor, max_index
 
 #----------------------------------------------
-
-#%%
-#---------- Class for Bounding Box + util functions ----------
-class BoundingBox:
-    '''Bounding Box definition'''
-    def __init__(self, xmin, ymin, xmax, ymax, c = None, classes = None):
-        self.xmin=xmin
-        self.ymin=ymin
-        self.xmax=xmax
-        self.ymax=ymax
-        self.c=c
-        self.classes=classes
-        self.label = None
-        self.score = None
-    def get_label(self):
-        if self.label == None:
-            self.label = np.argmax(self.classes)
-        return self.label
-    def get_score(self):
-        if self.score == None:
-            self.score = self.classes[self.get_label()]
-        return self.score
-
-# def getBoundBoxColor(label):
-#     colors = [
-#         [255, 0, 0],
-#         [0, 255, 0],
-#         [0, 0, 255]
-#     ]
-#     if label < len(colors):
-#         return colors[label]
-#     else:
-#         return colors[0] # return default
-
-def interval_overlap(interval_a, interval_b):
-    x1, x2 = interval_a
-    x3, x4 = interval_b
-    
-    if x3 < x1:
-        if x4 < x1:
-            return 0
-        else:
-            return min(x2, x4) - x1
-    else:
-        if x2 < x3:
-            return 0
-        else:
-            return min(x2, x4) - x3
-
-def boundbox_iou(bx1, bx2):
-    intsec_w = interval_overlap([bx1.xmin, bx2.xmax], [bx2.xmin, bx2.xmax])
-    intsec_h = interval_overlap([bx1.ymin, bx2.ymax], [bx2.ymin, bx2.ymax])
-    intsec = intsec_w * intsec_h
-    w1, h1 = bx1.xmax-bx1.xmin, bx1.ymax-bx1.ymin
-    w2, h2 = bx2.xmax-bx2.xmin, bx2.ymax-bx2.ymin
-    union = w1*h1 + w2*h2 - intsec
-    return float(intsec)/union
-
-# def draw_boundbox(img, boxes, labels, thresh):
-#     for box in boxes:
-#         label_str=''
-#         label = None
-#         for idx in range(len(labels)):
-#             if box.classes[idx] > thresh:
-#                 if label_str != '': label_str +=', '
-#                 label_str += (labels[idx] + ' ' + str(round(box.get_score() * 100, 2)) + '%')
-#                 label = idx
-#         if label >= 0:
-#             text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, img.shape[0], 5)
-#             width, height = text_size[0][0], text_size[0][1]
-#             region = np.array([[box.xmin-3, box.ymin],
-#                                [box.xmin-3, box.ymin-height-26],
-#                                [box.xmin+width+13, box.ymin-height-26],
-#                                [box.xmin+width+13, box.ymin]], dtype='int32')
-#             cv2.rectangle(img=img, pt1=(box.xmin, box.ymin), pt2=(box.xmax, box.ymax), color=getBoundBoxColor(label), thickness=4)
-#             cv2.fillPoly(img=img, pts=[region], color=getBoundBoxColor(label))
-#             cv2.putText(img=img, text=label_str, org=(box.xmin+13, box.ymin-13), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontscale=img.shape[0], color=(0, 0, 0), thickness=2)
-#     return img
-#--------------------------------------------
 #%%
 #----------Callback----------
 def create_callbacks():
