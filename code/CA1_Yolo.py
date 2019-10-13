@@ -233,22 +233,43 @@ class DataGenerator(Sequence):
         yolo_loss2 = np.zeros((curr_indices - next_indices, 1))
         yolo_loss3 = np.zeros((curr_indices - next_indices, 1))
 
+        true_box_idx = 0
         img_count = 0
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             raw_img = cv2.imread(anno['filename'])
             img, bbs = self.augmentation_with_boundingboxes(raw_img, anno['bbs'])
-            for box in bbs.BoundingBox:
+            for box in bbs.bounding_boxes:
                 max_anchor, max_index = _get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
                 yolo_grid_height, yolo_grid_width = yolo_out.shape[1:3]
+                centerX = (0.5 * (box.x1 + box.x2)) / (float(self.width) * yolo_grid_width)
+                centerY = (0.5 * (box.y1 + box.y2)) / (float(self.height) * yolo_grid_height)
+                w = np.log((box.x2 - box.x1) / float(max_anchor.x2))
+                h = np.log((box.y2 - box.y1) / float(max_anchor.y2))
+                yolobox = [centerX, centerY, w, h]
+                anno_idx = self.labels(box.label)
+                gridX = int(np.floor(centerX))
+                gridY = int(np.floor(centerY))
 
+                yolo_out[img_count, gridY, gridX, max_index%3] = 0
+                yolo_out[img_count, gridY, gridX, max_index%3, 0:4] = yolobox
+                yolo_out[img_count, gridY, gridX, max_index%3, 4] = 1.
+                yolo_out[img_count, gridY, gridX, max_index%3, 5+anno_idx] = 1
+
+                true_box = [centerX, centerY, box.x2 - box.x1, box.y2 - box.y1]
+                groundtruths[img_count, 0, 0, 0, true_box_idx] = true_box
+                true_box_idx += 1
+                true_box_idx = true_box_idx % self.max_boxes
+            input_images[img_count] = img/255
+            img_count += 1
+        return [input_images, groundtruths, yolo_smallout, yolo_midout, yolo_bigout], [yolo_loss1, yolo_loss2, yolo_loss3]    
 
     def _get_best_anchor(self, boundbox):
         '''Compare bounding box with all anchors and find best match'''
         max_anchor = None
         max_index = -1
         max_iou = -1
-        bb = ia.BoundingBox(x1=0.0, y1=0.0, x2=boundbox.bounding_boxes[0].x2, y2=boundbox.bounding_boxes[0].y2)
+        bb = ia.BoundingBox(x1=0.0, y1=0.0, x2=boundbox.x2, y2=boundbox.y2)
         for idx in range(len(self.anchors)):
             anchor = ia.BoundingBox(x1=0.0,y1=0.0,x2=self.anchors[idx][0],y2=self.anchors[idx][1])
             iou = bb.iou(anchor)
