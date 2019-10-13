@@ -213,6 +213,7 @@ class DataGenerator(Sequence):
         return seq(images=images, bounding_boxes=bbs)
     
     def __getitem__(self, index):
+        '''Get input per batch'''
         grid_height, grid_width = self.height//self.basefactor, self.width//self.basefactor
         curr_indices = index * self.batch_size # r_bound
         next_indices = (index + 1) * self.batch_size # l_bound
@@ -232,8 +233,11 @@ class DataGenerator(Sequence):
         yolo_loss2 = np.zeros((curr_indices - next_indices, 1))
         yolo_loss3 = np.zeros((curr_indices - next_indices, 1))
 
-        for anno in self.annotations[curr_indices:next_indices]:
-            pass
+        img_count = 0
+        for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
+            raw_img = cv2.imread(anno['filename'])
+            img, bbs = self.augmentation_with_boundingboxes(raw_img, anno['bbs'])
+
 #----------------------------------------------
 
 #%%
