@@ -31,22 +31,24 @@ from keras.engine.topology import Layer
 from keras.utils import Sequence
 
 #%%
-#----------Config----------
-NUM_CLASSES = 2
-LABELS = ['car', 'bus']
-#--------------------------
-#%%
 #---------- API for YoloV3 ----------
 class YoloV3():
     def __init__(self, *args, **kwargs):
+        '''Ctor'''
         # super().__init__(*args, **kwargs):
         pass
     def fit(self, img_dir, annotation_dir):
-        all_anno, labels = read_annotation_files(img_dir, annotation_dir)
+        '''Fit without augmentation'''
+        all_anno, labels, anchor_boxes = self._process_dataset(img_dir, annotation_dir)
     def fit_generator(self, img_dir, annotation_dir):
-        all_anno, labels = read_annotation_files(img_dir, annotation_dir)        
+        '''Fit with augmentationo'''
+        all_anno, labels, anchor_boxes = self._process_dataset(img_dir, annotation_dir)
     def predict(self):
         pass
+    def _process_dataset(self, img_dir, annotation_dir):
+        all_anno, labels = read_annotation_files(img_dir, annotation_dir)
+        anchor_boxes = generateAnchorBoxes(all_anno, labels)
+        return all_anno, labels, anchor_boxes
 #------------------------------------
 #%%
 #----------Generate Anchor boxes----------
