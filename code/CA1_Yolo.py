@@ -44,11 +44,11 @@ class YoloV3():
     def fit(self, img_dir, annotation_dir, train_size):
         '''Fit without augmentation'''
         all_anno, labels, anchor_boxes = self._process_dataset(img_dir, annotation_dir)
-        train_anno, valid_anno = _train_valid_split(all_anno)
+        train_anno, valid_anno, max_boxes = _train_valid_split(all_anno)
     def fit_generator(self, img_dir, annotation_dir, train_size):
         '''Fit with augmentation'''
         all_anno, labels, anchor_boxes = self._process_dataset(img_dir, annotation_dir)
-        train_anno, valid_anno = _train_valid_split(all_anno)
+        train_anno, valid_anno, max_boxes = _train_valid_split(all_anno)
     def predict(self):
         pass
     def _process_dataset(self, img_dir, annotation_dir):
@@ -60,7 +60,8 @@ class YoloV3():
         np.random.shuffle(all_anno)
         train_anno = all_anno[:train_valid_split]
         valid_anno = all_anno[train_valid_split:]
-        return train_anno, valid_anno
+        max_boxes = max([len(anno['object']) for anno in (train_anno + valid_anno)])
+        return train_anno, valid_anno, max_boxes
 #------------------------------------
 #%%
 #----------VOC Parser----------
@@ -183,13 +184,18 @@ class DataGenerator(Sequence):
         def on_epoch_end(self)
         def __getitem__(self)'''
 
-    def __init__(self, image_path, labels, batch_size=32, image_dims=(416, 416, 3), shuffle=False, augment=True):
-        self.image_path=image_path
+    def __init__(self, annotations, max_boxes, anchors, labels, batch_size=32, width=416, height=416, shuffle=False, augment=True):
+        self.annotations=annotations #instance
+        self.max_boxes=max_boxes
+        self.anchors=anchors
         self.labels=labels
         self.batch_size=batch_size
         self.image_dims=image_dims
         self.shuffle=shuffle
         self.augment=augment
+        self.basefactor=32
+        self.width=width
+        self.height=height
         self.on_epoch_end()
     
     def on_epoch_end(self):
@@ -197,17 +203,6 @@ class DataGenerator(Sequence):
         self.index = np.arange(len(self.image_path))
         if self.shuffle:
             np.random.shuffle(self.index)
-    
-    # def generatesinglebatchdata(self, index):
-    #     '''Generate a batch of data'''
-    #     indexes = self.index[index * self.batch_size:(index + 1) * self.batch_size]
-    #     labels=np.array([self.labels[k] for k in indexes])
-    #     images = [cv2.imread(self.image_path[k]) for k in indexes]
-    
-    #     if self.augment:
-    #         images = self.augmentation(images)
-    #     images = np.array([preprocess_input(img) for img in images])
-    #     return images, labels
     
     def augmentation_with_boundingboxes(self, images, bbs):
         '''Image augmentation with imgaug'''
@@ -218,31 +213,50 @@ class DataGenerator(Sequence):
         return seq(images=images, bounding_boxes=bbs)
     
     def __getitem__(self, index):
-        index = self.index[index * self.batch_size : (index + 1) * self.batch_size]
-        labels = np.array
+        grid_height, grid_width = self.height//self.basefactor, self.width//self.basefactor
+        curr_indices = index * self.batch_size # r_bound
+        next_indices = (index + 1) * self.batch_size # l_bound
+        if curr_indices > len(self.annotations):
+            curr_indices = len(self.annotations)
+            next_indices = curr_indices - self.batch_size
+        
+        input_images = np.zeros((curr_indices - next_indices, self.height, self.width, 3))
+        groundtruths = np.zeros((curr_indices - next_indices, 1, 1, 1, self.max_boxes, 4))
+
+        yolo_smallout = np.zeros((curr_indices - next_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        yolo_midout = np.zeros((curr_indices - next_indices, 2 * grid_height, 2 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        yolo_bigout = np.zeros((curr_indices - next_indices, 4 * grid_height, 4 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        all_out = [yolo_bigout, yolo_midout, yolo_smallout]
+
+        yolo_loss1 = np.zeros((curr_indices - next_indices, 1))
+        yolo_loss2 = np.zeros((curr_indices - next_indices, 1))
+        yolo_loss3 = np.zeros((curr_indices - next_indices, 1))
+
+        for anno in self.annotations[curr_indices:next_indices]:
+            pass
 #----------------------------------------------
 
 #%%
 #---------- Class for Bounding Box + util functions ----------
-# class BoundingBox:
-#     '''Bounding Box definition'''
-#     def __init__(self, xmin, ymin, xmax, ymax, c = None, classes = None):
-#         self.xmin=xmin
-#         self.ymin=ymin
-#         self.xmax=xmax
-#         self.ymax=ymax
-#         self.c=c
-#         self.classes=classes
-#         self.label = None
-#         self.score = None
-#     def get_label(self):
-#         if self.label == None:
-#             self.label = np.argmax(self.classes)
-#         return self.label
-#     def get_score(self):
-#         if self.score == None:
-#             self.score = self.classes[self.get_label()]
-#         return self.score
+class BoundingBox:
+    '''Bounding Box definition'''
+    def __init__(self, xmin, ymin, xmax, ymax, c = None, classes = None):
+        self.xmin=xmin
+        self.ymin=ymin
+        self.xmax=xmax
+        self.ymax=ymax
+        self.c=c
+        self.classes=classes
+        self.label = None
+        self.score = None
+    def get_label(self):
+        if self.label == None:
+            self.label = np.argmax(self.classes)
+        return self.label
+    def get_score(self):
+        if self.score == None:
+            self.score = self.classes[self.get_label()]
+        return self.score
 
 # def getBoundBoxColor(label):
 #     colors = [
@@ -255,29 +269,29 @@ class DataGenerator(Sequence):
 #     else:
 #         return colors[0] # return default
 
-# def interval_overlap(interval_a, interval_b):
-#     x1, x2 = interval_a
-#     x3, x4 = interval_b
+def interval_overlap(interval_a, interval_b):
+    x1, x2 = interval_a
+    x3, x4 = interval_b
     
-#     if x3 < x1:
-#         if x4 < x1:
-#             return 0
-#         else:
-#             return min(x2, x4) - x1
-#     else:
-#         if x2 < x3:
-#             return 0
-#         else:
-#             return min(x2, x4) - x3
+    if x3 < x1:
+        if x4 < x1:
+            return 0
+        else:
+            return min(x2, x4) - x1
+    else:
+        if x2 < x3:
+            return 0
+        else:
+            return min(x2, x4) - x3
 
-# def boundbox_iou(bx1, bx2):
-#     intsec_w = interval_overlap([bx1.xmin, bx2.xmax], [bx2.xmin, bx2.xmax])
-#     intsec_h = interval_overlap([bx1.ymin, bx2.ymax], [bx2.ymin, bx2.ymax])
-#     intsec = intsec_w * intsec_h
-#     w1, h1 = bx1.xmax-bx1.xmin, bx1.ymax-bx1.ymin
-#     w2, h2 = bx2.xmax-bx2.xmin, bx2.ymax-bx2.ymin
-#     union = w1*h1 + w2*h2 - intsec
-#     return float(intsec)/union
+def boundbox_iou(bx1, bx2):
+    intsec_w = interval_overlap([bx1.xmin, bx2.xmax], [bx2.xmin, bx2.xmax])
+    intsec_h = interval_overlap([bx1.ymin, bx2.ymax], [bx2.ymin, bx2.ymax])
+    intsec = intsec_w * intsec_h
+    w1, h1 = bx1.xmax-bx1.xmin, bx1.ymax-bx1.ymin
+    w2, h2 = bx2.xmax-bx2.xmin, bx2.ymax-bx2.ymin
+    union = w1*h1 + w2*h2 - intsec
+    return float(intsec)/union
 
 # def draw_boundbox(img, boxes, labels, thresh):
 #     for box in boxes:
