@@ -29,6 +29,10 @@ from keras.layers.merge import concatenate
 from keras.applications.nasnet import preprocess_input
 from keras.engine.topology import Layer
 from keras.utils import Sequence
+from keras.callbacks import EarlyStopping
+from keras.callbacks import ReduceLROnPlateau
+from keras.callbacks import BaseLogger
+from keras.callbacks import ModelCheckpoint
 
 #%%
 #---------- API for YoloV3 ----------
@@ -296,6 +300,24 @@ class DataGenerator(Sequence):
 #             cv2.putText(img=img, text=label_str, org=(box.xmin+13, box.ymin-13), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontscale=img.shape[0], color=(0, 0, 0), thickness=2)
 #     return img
 #--------------------------------------------
+#%%
+#----------Callback----------
+def create_callbacks():
+    return [
+        EarlyStopping(
+            monitor='loss',
+            mode='min',
+            min_delta=0.01,
+            patience=5,
+            verbose=1),
+        ReduceLROnPlateau(
+            monitor='loss',
+            patience=5,
+            verbose=1,
+            mode='min',
+            epsilon=0.01),
+    ]
+#----------------------------
 #----------Loss Layer----------
 # Refering to this https://keras.io/layers/writing-your-own-keras-layers/
 class YoloLossLayer(Layer):
