@@ -224,7 +224,7 @@ class DataGenerator(Sequence):
     def __init__(self, annotations, max_boxes, anchors, labels, batch_size=32, width=416, height=416, shuffle=False, augment=True):
         self.annotations=annotations #instance
         self.max_boxes=max_boxes
-        self.anchors=anchors
+        self.anchors=[ia.BoundingBox(x1=0.0,y1=0.0,x2=anchors[2*i],y2=anchors[2*i+1]) for i in range(len(anchors)//2)]
         self.labels=labels
         self.batch_size=batch_size
         self.shuffle=shuffle
@@ -251,43 +251,42 @@ class DataGenerator(Sequence):
         ])
         return seq(images=images, bounding_boxes=bbs)
     
-    def _get_net_size(self, idx):
-        if idx%10 == 0:
-            net_size = self.basefactor*np.random.randint(416/self.basefactor, \
-                                                         416/self.basefactor+1)
-            print("resizing: ", net_size, net_size)
-            self.height, self.width = net_size, net_size
-        return self.height, self.width
+    # def _get_net_size(self, idx):
+    #     if idx%10 == 0:
+    #         net_size = self.basefactor*np.random.randint(416/self.basefactor, \
+    #                                                      416/self.basefactor+1)
+    #         print("resizing: ", net_size, net_size)
+    #         self.height, self.width = net_size, net_size
+    #     return self.height, self.width
     
     def __getitem__(self, index):
         '''Get input per batch'''
-        self.height, self.width = self._get_net_size(index)
+        # self.height, self.width = self._get_net_size(index)
         grid_height, grid_width = self.height//self.basefactor, self.width//self.basefactor
         curr_indices = index * self.batch_size # r_bound
         next_indices = (index + 1) * self.batch_size # l_bound
         if curr_indices > len(self.annotations):
             curr_indices = len(self.annotations)
             next_indices = curr_indices - self.batch_size
-        print(f'Curr ind:{curr_indices}, next_indices:{next_indices}')
-        input_images = np.zeros((curr_indices - next_indices, self.height, self.width, 3))
-        groundtruths = np.zeros((curr_indices - next_indices, 1, 1, 1, self.max_boxes, 4))
+        input_images = np.zeros((next_indices - curr_indices, self.height, self.width, 3))
+        groundtruths = np.zeros((next_indices - curr_indices, 1, 1, 1, self.max_boxes, 4))
 
-        yolo_smallout = np.zeros((curr_indices - next_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
-        yolo_midout = np.zeros((curr_indices - next_indices, 2 * grid_height, 2 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
-        yolo_bigout = np.zeros((curr_indices - next_indices, 4 * grid_height, 4 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        yolo_smallout = np.zeros((next_indices - curr_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        yolo_midout = np.zeros((next_indices - curr_indices, 2 * grid_height, 2 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        yolo_bigout = np.zeros((next_indices - curr_indices, 4 * grid_height, 4 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
         all_out = [yolo_bigout, yolo_midout, yolo_smallout]
-
-        yolo_loss1 = np.zeros((curr_indices - next_indices, 1))
-        yolo_loss2 = np.zeros((curr_indices - next_indices, 1))
-        yolo_loss3 = np.zeros((curr_indices - next_indices, 1))
+        yolo_loss1 = np.zeros((next_indices - curr_indices, 1))
+        yolo_loss2 = np.zeros((next_indices - curr_indices, 1))
+        yolo_loss3 = np.zeros((next_indices - curr_indices, 1))
 
         true_box_idx = 0
         img_count = 0
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             raw_img = cv2.imread(anno['filename'])
+            # raw_img = cv2.resize(raw_img, (self.width, self.height))
             img, bbs = self.augmentation_with_boundingboxes(raw_img, anno['bbs'])
             for box in bbs.bounding_boxes:
-                max_anchor, max_index = _get_best_anchor(box)
+                max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
                 yolo_grid_height, yolo_grid_width = yolo_out.shape[1:3]
                 centerX = (0.5 * (box.x1 + box.x2)) / (float(self.width) * yolo_grid_width)
@@ -295,7 +294,7 @@ class DataGenerator(Sequence):
                 w = np.log((box.x2 - box.x1) / float(max_anchor.x2))
                 h = np.log((box.y2 - box.y1) / float(max_anchor.y2))
                 yolobox = [centerX, centerY, w, h]
-                anno_idx = self.labels(box.label)
+                anno_idx = list(self.labels).index(box.label)
                 gridX = int(np.floor(centerX))
                 gridY = int(np.floor(centerY))
 
@@ -319,7 +318,7 @@ class DataGenerator(Sequence):
         max_iou = -1
         bb = ia.BoundingBox(x1=0.0, y1=0.0, x2=boundbox.x2, y2=boundbox.y2)
         for idx in range(len(self.anchors)):
-            anchor = ia.BoundingBox(x1=0.0,y1=0.0,x2=self.anchors[idx][0],y2=self.anchors[idx][1])
+            anchor = self.anchors[idx]
             iou = bb.iou(anchor)
             if max_iou < iou:
                 max_anchor = anchor
