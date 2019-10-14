@@ -49,6 +49,43 @@ class YoloV3():
         '''Fit with augmentation'''
         all_anno, labels, anchor_boxes = self._process_dataset(img_dir, annotation_dir)
         train_anno, valid_anno, max_boxes = _train_valid_split(all_anno)
+        train_generator = DataGenerator(
+            annotations=train_generator,
+            max_boxes=max_boxes,
+            anchors=anchor_boxes,
+            labels=labels,
+            batch_size=16,
+            width=416,
+            height=416,
+            shuffle=True,
+            augment=True)
+        valid_generator = DataGenerator(
+            annotations=valid_generator,
+            max_boxes=max_boxes,
+            anchors=anchor_boxes,
+            labels=labels,
+            batch_size=16,
+            width=416,
+            height=416,
+            shuffle=True,
+            augment=True)
+        
+        train_model, infer_mode = YoloV3(
+            numcls=len(labels),
+            anchors=anchor_boxes,
+            max_grid=[416, 416],
+            batch_size=16,
+            threshold=0.5,
+            max_boxes=max_boxes)
+        callback = create_callbacks()
+        train_model.fit_generator(
+            generator=train_generator,
+            steps_per_epoch=len(train_generator) * 3,
+            epochs=300,
+            callbacks=callback,
+            workers=4,
+            max_queue_size=8)
+        
     def predict(self):
         pass
     def _process_dataset(self, img_dir, annotation_dir):
@@ -190,7 +227,6 @@ class DataGenerator(Sequence):
         self.anchors=anchors
         self.labels=labels
         self.batch_size=batch_size
-        self.image_dims=image_dims
         self.shuffle=shuffle
         self.augment=augment
         self.basefactor=32
@@ -200,7 +236,7 @@ class DataGenerator(Sequence):
     
     def on_epoch_end(self):
         '''Update index after each epoch'''
-        self.index = np.arange(len(self.image_path))
+        self.index = np.arange(len(self.annotations))
         if self.shuffle:
             np.random.shuffle(self.index)
     
