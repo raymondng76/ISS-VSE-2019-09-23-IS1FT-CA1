@@ -104,7 +104,7 @@ class YoloV3():
 #----------VOC Parser----------
 def read_annotation_files(image_dir, annnotation_dir):
     all_annotations = []
-    labels = []
+    labels = {}
     for anno in sorted(os.listdir(annnotation_dir)):
         img = {'object':[]}
         try:
@@ -146,7 +146,7 @@ def read_annotation_files(image_dir, annnotation_dir):
                 bb_list.append(ia.BoundingBox(x1=obj['xmin'], y1=obj['ymin'], x2=obj['xmax'], y2=obj['ymax'], label=obj['name']))
             img['bbs'] = ia.BoundingBoxesOnImage(bb_list, shape=(img['width'], img['height']))
             all_annotations += [img]
-    return all_annotations, labels
+    return all_annotations, labels.keys()
 #------------------------------
 #%%
 #----------Generate Anchor boxes----------
@@ -172,7 +172,6 @@ def calculate_kMeans(anno_arr, num_anchor):
     curr_distances = np.zeros((anno_arr.shape[0], num_anchor))
     indexes = [rand.randrange(anno_arr.shape[0]) for anchor in range(num_anchor)]
     sample_centroids = anno_arr[indexes]
-    final = sample_centroids.copy()
     iterations = 0
     while True:
         iterations += 1
@@ -184,7 +183,7 @@ def calculate_kMeans(anno_arr, num_anchor):
         print(f'iter: {iterations} distances: {np.sum(np.abs(curr_distances-distances_arr))}')
         assign_centroids = np.argmin(distances_arr, axis=1)
         if (assign_centroids == curr_assign_centroids).all():
-            return assign_centroids
+            return sample_centroids
         centroid_sums = np.zeros((num_anchor, anno_arr.shape[1]), np.float)
         for idx in range(anno_arr.shape[0]):
             centroid_sums[assign_centroids[idx]] += anno_arr[idx]
