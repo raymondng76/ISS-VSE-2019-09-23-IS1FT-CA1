@@ -232,6 +232,8 @@ class DataGenerator(Sequence):
         self.basefactor=32
         self.width=width
         self.height=height
+        self.min_size=320
+        self.max_size=608
         self.on_epoch_end()
 
     def __len__(self):
@@ -251,17 +253,16 @@ class DataGenerator(Sequence):
         ])
         return seq(images=images, bounding_boxes=bbs)
     
-    # def _get_net_size(self, idx):
-    #     if idx%10 == 0:
-    #         net_size = self.basefactor*np.random.randint(416/self.basefactor, \
-    #                                                      416/self.basefactor+1)
-    #         print("resizing: ", net_size, net_size)
-    #         self.height, self.width = net_size, net_size
-    #     return self.height, self.width
+    def _current_size(self, idx):
+        if idx%10 == 0:
+            net_size = self.basefactor*np.random.randint(self.min_size/self.basefactor, \
+                                                         self.max_size/self.basefactor+1)
+            self.height, self.width = net_size, net_size
+        return self.height, self.width
     
     def __getitem__(self, index):
         '''Get input per batch'''
-        # self.height, self.width = self._get_net_size(index)
+        self.height, self.width = self._get_net_size(index)
         grid_height, grid_width = self.height//self.basefactor, self.width//self.basefactor
         curr_indices = index * self.batch_size # r_bound
         next_indices = (index + 1) * self.batch_size # l_bound
@@ -333,15 +334,15 @@ def create_callbacks():
     return [
         EarlyStopping(
             monitor='loss',
-            mode='min',
+            mode='auto',
             min_delta=0.01,
-            patience=5,
+            patience=7,
             verbose=1),
         ReduceLROnPlateau(
             monitor='loss',
-            patience=5,
+            patience=7,
             verbose=1,
-            mode='min',
+            mode='auto',
             epsilon=0.01),
     ]
 #----------------------------
