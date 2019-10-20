@@ -284,7 +284,7 @@ class DataGenerator(Sequence):
         img_count = 0
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             raw_img = cv2.imread(anno['filename'])
-            # raw_img = cv2.resize(raw_img, (self.width, self.height))
+            raw_img = cv2.resize(raw_img, (self.width, self.height))
             img, bbs = self.augmentation_with_boundingboxes(raw_img, anno['bbs'])
             for box in bbs.bounding_boxes:
                 max_anchor, max_index = self._get_best_anchor(box)
