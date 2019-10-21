@@ -10,6 +10,7 @@ import os
 import xml.etree.ElementTree as ET
 import pickle
 import random as rand
+import copy
 
 import imgaug as ia
 from imgaug import augmenters as iaa
@@ -259,6 +260,29 @@ class DataGenerator(Sequence):
                                                          self.max_size/self.basefactor+1)
             self.height, self.width = net_size, net_size
         return self.height, self.width
+
+    def _limit_constraint(self, value, minVal, maxVal):
+        if value < minVal:
+            return minVal
+        if value > maxVal:
+            return maxVal
+        return value
+
+    def _scale_boxes(self, boxes, img_height, img_width, new_height, new_width):
+        all_boxes = copy.deepcopy(boxes)
+        sx, sy = float(new_width) / img_width, float(new_height) / img_height
+        box_list = []
+        for box in boxes.bounding_boxes:
+            scale_box = ia.BoundingBox(
+                x1=int(self._limit_constraint(0, new_width, box.x1 * sx)),
+                x2=int(self._limit_constraint(0, new_width, box.x2 * sx)),
+                y1=int(self._limit_constraint(0, new_height, box.y1 * sy)),
+                y2=int(self._limit_constraint(0, new_height, box.y2 * sy)),
+                label=box.label)
+            if (scale_box.x2 <= scale_box.x1 or scale_box.y2 <= scale_box.y1):
+                continue
+            box_list.append(scale_box)
+        return ia.BoundingBoxesOnImage(box_list, (new_width, new_height))
     
     def __getitem__(self, index):
         '''Get input per batch'''
@@ -285,7 +309,9 @@ class DataGenerator(Sequence):
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             raw_img = cv2.imread(anno['filename'])
             raw_img = cv2.resize(raw_img, (self.width, self.height))
-            img, bbs = self.augmentation_with_boundingboxes(raw_img, anno['bbs'])
+            boundboxes = anno['bbs']
+            boundboxes = self._scale_boxes(boundboxes, raw_img.shape[0], raw_img.shape[1], self.height, self.width)
+            img, bbs = self.augmentation_with_boundingboxes(raw_img, boundboxes)
             for box in bbs.bounding_boxes:
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
