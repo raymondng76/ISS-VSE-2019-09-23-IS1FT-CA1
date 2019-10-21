@@ -270,17 +270,23 @@ class DataGenerator(Sequence):
 
     def _scale_boxes(self, boxes, img_height, img_width, new_height, new_width):
         all_boxes = copy.deepcopy(boxes)
-        sx, sy = float(new_width) / img_width, float(new_height) / img_height
+        xScale, yScale = float(new_width) / img_width, float(new_height) / img_height
         box_list = []
         for box in boxes.bounding_boxes:
+            # scale_box = ia.BoundingBox(
+            #     x1=int(self._limit_constraint(0, new_width, box.x1 * sx)),
+            #     x2=int(self._limit_constraint(0, new_width, box.x2 * sx)),
+            #     y1=int(self._limit_constraint(0, new_height, box.y1 * sy)),
+            #     y2=int(self._limit_constraint(0, new_height, box.y2 * sy)),
+            #     label=box.label)
             scale_box = ia.BoundingBox(
-                x1=int(self._limit_constraint(0, new_width, box.x1 * sx)),
-                x2=int(self._limit_constraint(0, new_width, box.x2 * sx)),
-                y1=int(self._limit_constraint(0, new_height, box.y1 * sy)),
-                y2=int(self._limit_constraint(0, new_height, box.y2 * sy)),
+                x1=int(np.round(box.x1 * xScale)),
+                x2=int(np.round(box.x2 * xScale)),
+                y1=int(np.round(box.y1 * yScale)),
+                y2=int(np.round(box.y2 * yScale)),
                 label=box.label)
-            if (scale_box.x2 <= scale_box.x1 or scale_box.y2 <= scale_box.y1):
-                continue
+            # if (scale_box.x2 <= scale_box.x1 or scale_box.y2 <= scale_box.y1):
+            #     continue
             box_list.append(scale_box)
         return ia.BoundingBoxesOnImage(box_list, (new_width, new_height))
     
@@ -369,7 +375,7 @@ def create_callbacks():
             patience=7,
             verbose=1,
             mode='auto',
-            epsilon=0.01),
+            min_delta=0.01),
     ]
 #----------------------------
 #----------Loss Layer----------
