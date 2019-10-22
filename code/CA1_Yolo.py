@@ -34,66 +34,74 @@ from keras.callbacks import EarlyStopping
 from keras.callbacks import ReduceLROnPlateau
 from keras.callbacks import BaseLogger
 from keras.callbacks import ModelCheckpoint
+from keras.optimizers import Adam
 
 #%%
 #---------- API for YoloV3 ----------
-class YoloV3():
-    def __init__(self, *args, **kwargs):
+class YoloV3_API():
+    def __init__(self, img_dir, annotation_dir, train_size, height=416, width=416, threshold=0.5, batch_size=16, shuffle=True):
         '''Ctor'''
-        # super().__init__(*args, **kwargs):
-        pass
-    def fit(self, img_dir, annotation_dir, train_size):
-        '''Fit without augmentation'''
-        all_anno, labels, anchor_boxes = self._process_dataset(img_dir, annotation_dir)
-        train_anno, valid_anno, max_boxes = _train_valid_split(all_anno)
-    def fit_generator(self, img_dir, annotation_dir, train_size):
-        '''Fit with augmentation'''
-        all_anno, labels, anchor_boxes = self._process_dataset(img_dir, annotation_dir)
-        train_anno, valid_anno, max_boxes = self._train_valid_split(all_anno)
-        train_generator = DataGenerator(
-            annotations=train_anno,
-            max_boxes=max_boxes,
-            anchors=anchor_boxes,
-            labels=labels,
-            batch_size=16,
-            width=416,
-            height=416,
-            shuffle=True,
-            augment=True)
-        valid_generator = DataGenerator(
-            annotations=valid_anno,
-            max_boxes=max_boxes,
-            anchors=anchor_boxes,
-            labels=labels,
-            batch_size=16,
-            width=416,
-            height=416,
-            shuffle=True,
-            augment=True)
-        
-        train_model, infer_mode = YoloV3(
-            numcls=len(labels),
-            anchors=anchor_boxes,
+        self.all_anno, self.labels, self.anchor_boxes = self._process_dataset(img_dir, annotation_dir)
+        self.train_anno, self.valid_anno, self.max_boxes = self._train_valid_split(self.all_anno, train_size)
+
+        self.train_generator = DataGenerator(
+            annotations=self.train_anno,
+            max_boxes=self.max_boxes,
+            anchors=self.anchor_boxes,
+            labels=self.labels,
+            batch_size=batch_size,
+            width=width,
+            height=height,
+            shuffle=shuffle)
+
+        self.valid_generator = DataGenerator(
+            annotations=self.valid_anno,
+            max_boxes=self.max_boxes,
+            anchors=self.anchor_boxes,
+            labels=self.labels,
+            batch_size=batch_size,
+            width=width,
+            height=height,
+            shuffle=shuffle)
+
+        self.train_model, self.infer_mode = YoloV3(
+            numcls=len(self.labels),
+            anchors=self.anchor_boxes,
             max_grid=[416, 416],
-            batch_size=16,
-            threshold=0.5,
-            max_boxes=max_boxes)
+            batch_size=batch_size,
+            threshold=threshold,
+            max_boxes=self.max_boxes)
+
+    def fit_generator(self, epoch=300):
+        '''Fit with augmentation'''
         callback = create_callbacks()
-        train_model.fit_generator(
-            generator=train_generator,
-            steps_per_epoch=len(train_generator) * 3,
+
+        def dummy_loss(y_true, y_pred):
+            return tf.sqrt(tf.reduce_sum(y_pred))
+
+        opt = Adam(lr=1e-4, clipnorm=0.001)
+        self.train_model.compile(loss=dummy_loss, optimizer=opt)
+
+        history = self.train_model.fit_generator(
+            generator=self.train_generator,
+            steps_per_epoch=len(self.train_generator),
             epochs=300,
             callbacks=callback,
             workers=4,
             max_queue_size=8)
-        
+        return history
+
     def predict(self):
         pass
+
     def _process_dataset(self, img_dir, annotation_dir):
+        '''Read all annotation files and generate anchor boxes'''
         all_anno, labels = read_annotation_files(img_dir, annotation_dir)
         anchor_boxes = generateAnchorBoxes(all_anno, labels)
         return all_anno, labels, anchor_boxes
+
     def _train_valid_split(self, all_anno, train_size=0.8):
+        '''Split dataset to train test split'''
         train_valid_split = int(train_size * len(all_anno))
         np.random.shuffle(all_anno)
         train_anno = all_anno[:train_valid_split]
@@ -152,6 +160,7 @@ def read_annotation_files(image_dir, annnotation_dir):
 #%%
 #----------Generate Anchor boxes----------
 def calculate_iou(anno, centroids):
+    '''Calculate IOU'''
     anno_width, anno_height = anno
     iou_list = []
     anno_area = anno_width * anno_height
@@ -169,6 +178,7 @@ def calculate_iou(anno, centroids):
     return np.array(iou_list)
 
 def calculate_kMeans(anno_arr, num_anchor):
+    '''Kmeans algorithm to determine anchor clusters'''
     curr_assign_centroids = np.zeros(anno_arr.shape[0])
     curr_distances = np.zeros((anno_arr.shape[0], num_anchor))
     indexes = [rand.randrange(anno_arr.shape[0]) for anchor in range(num_anchor)]
@@ -195,6 +205,7 @@ def calculate_kMeans(anno_arr, num_anchor):
 
 #Reference https://lars76.github.io/object-detection/k-means-anchor-boxes/
 def generateAnchorBoxes(annotations, labels, num_anchor=9):
+    '''Main method to generate anchor boxes for annotations input'''
     annotation_dims = []
     for anno in annotations:
         for obj in anno['object']:
@@ -222,14 +233,13 @@ class DataGenerator(Sequence):
         def on_epoch_end(self)
         def __getitem__(self)'''
 
-    def __init__(self, annotations, max_boxes, anchors, labels, batch_size=32, width=416, height=416, shuffle=False, augment=True):
+    def __init__(self, annotations, max_boxes, anchors, labels, batch_size=16, width=416, height=416, shuffle=True):
         self.annotations=annotations #instance
         self.max_boxes=max_boxes
         self.anchors=[ia.BoundingBox(x1=0.0,y1=0.0,x2=anchors[2*i],y2=anchors[2*i+1]) for i in range(len(anchors)//2)]
         self.labels=labels
         self.batch_size=batch_size
         self.shuffle=shuffle
-        self.augment=augment
         self.basefactor=32
         self.width=width
         self.height=height
@@ -255,44 +265,32 @@ class DataGenerator(Sequence):
         return seq(images=images, bounding_boxes=bbs)
     
     def _current_size(self, idx):
+        '''Set the image size for the current image, change size every 10 image'''
         if idx%10 == 0:
             net_size = self.basefactor*np.random.randint(self.min_size/self.basefactor, \
                                                          self.max_size/self.basefactor+1)
             self.height, self.width = net_size, net_size
         return self.height, self.width
 
-    def _limit_constraint(self, value, minVal, maxVal):
-        if value < minVal:
-            return minVal
-        if value > maxVal:
-            return maxVal
-        return value
-
     def _scale_boxes(self, boxes, img_height, img_width, new_height, new_width):
+        '''Scale bounding boxes according to image resize scale'''
         all_boxes = copy.deepcopy(boxes)
         xScale, yScale = float(new_width) / img_width, float(new_height) / img_height
         box_list = []
         for box in boxes.bounding_boxes:
-            # scale_box = ia.BoundingBox(
-            #     x1=int(self._limit_constraint(0, new_width, box.x1 * sx)),
-            #     x2=int(self._limit_constraint(0, new_width, box.x2 * sx)),
-            #     y1=int(self._limit_constraint(0, new_height, box.y1 * sy)),
-            #     y2=int(self._limit_constraint(0, new_height, box.y2 * sy)),
-            #     label=box.label)
             scale_box = ia.BoundingBox(
                 x1=int(np.round(box.x1 * xScale)),
                 x2=int(np.round(box.x2 * xScale)),
                 y1=int(np.round(box.y1 * yScale)),
                 y2=int(np.round(box.y2 * yScale)),
                 label=box.label)
-            # if (scale_box.x2 <= scale_box.x1 or scale_box.y2 <= scale_box.y1):
-            #     continue
             box_list.append(scale_box)
         return ia.BoundingBoxesOnImage(box_list, (new_width, new_height))
     
     def __getitem__(self, index):
         '''Get input per batch'''
         self.height, self.width = self._current_size(index)
+        print(f'Current Size: {self.height} x {self.width}')
         grid_height, grid_width = self.height//self.basefactor, self.width//self.basefactor
         curr_indices = index * self.batch_size # r_bound
         next_indices = (index + 1) * self.batch_size # l_bound
@@ -501,6 +499,7 @@ def createYoloLyr(inputs, convLyrs, skip=True):
         return x
 
 def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
+    '''Main YOLOv3 Model'''
     img = Input(shape=(None,None,3))
     true_boxes = Input(shape=(1,1,1,max_boxes, 4))
     true_box_1 = Input(shape=(None, None, len(anchors)//6, 5+numcls))
