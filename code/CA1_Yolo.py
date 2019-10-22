@@ -289,15 +289,15 @@ class DataGenerator(Sequence):
     
     def __getitem__(self, index):
         '''Get input per batch'''
-        self.height, self.width = self._current_size(index)
-        print(f'Current Size: {self.height} x {self.width}')
-        grid_height, grid_width = self.height//self.basefactor, self.width//self.basefactor
+        height, width = self._current_size(index)
+        print(f'Current Size: {height} x {width}')
+        grid_height, grid_width = height//self.basefactor, width//self.basefactor
         curr_indices = index * self.batch_size # r_bound
         next_indices = (index + 1) * self.batch_size # l_bound
         if curr_indices > len(self.annotations):
             curr_indices = len(self.annotations)
             next_indices = curr_indices - self.batch_size
-        input_images = np.zeros((next_indices - curr_indices, self.height, self.width, 3))
+        input_images = np.zeros((next_indices - curr_indices, height, width, 3))
         groundtruths = np.zeros((next_indices - curr_indices, 1, 1, 1, self.max_boxes, 4))
 
         yolo_smallout = np.zeros((next_indices - curr_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
@@ -312,16 +312,16 @@ class DataGenerator(Sequence):
         img_count = 0
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             raw_img = cv2.imread(anno['filename'])
-            raw_img = cv2.resize(raw_img, (self.width, self.height))
+            raw_img = cv2.resize(raw_img, (width, height))
             boundboxes = anno['bbs']
-            boundboxes = self._scale_boxes(boundboxes, raw_img.shape[0], raw_img.shape[1], self.height, self.width)
+            boundboxes = self._scale_boxes(boundboxes, raw_img.shape[0], raw_img.shape[1], height, width)
             img, bbs = self.augmentation_with_boundingboxes(raw_img, boundboxes)
             for box in bbs.bounding_boxes:
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
                 yolo_grid_height, yolo_grid_width = yolo_out.shape[1:3]
-                centerX = (0.5 * (box.x1 + box.x2)) / (float(self.width) * yolo_grid_width)
-                centerY = (0.5 * (box.y1 + box.y2)) / (float(self.height) * yolo_grid_height)
+                centerX = (0.5 * (box.x1 + box.x2)) / (float(width) * yolo_grid_width)
+                centerY = (0.5 * (box.y1 + box.y2)) / (float(height) * yolo_grid_height)
                 w = np.log((box.x2 - box.x1) / float(max_anchor.x2))
                 h = np.log((box.y2 - box.y1) / float(max_anchor.y2))
                 yolobox = [centerX, centerY, w, h]
