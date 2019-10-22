@@ -290,7 +290,6 @@ class DataGenerator(Sequence):
     def __getitem__(self, index):
         '''Get input per batch'''
         height, width = self._current_size(index)
-        print(f'Current Size: {height} x {width}')
         grid_height, grid_width = height//self.basefactor, width//self.basefactor
         curr_indices = index * self.batch_size # r_bound
         next_indices = (index + 1) * self.batch_size # l_bound
