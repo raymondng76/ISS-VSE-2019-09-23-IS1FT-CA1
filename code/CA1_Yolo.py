@@ -312,9 +312,12 @@ class DataGenerator(Sequence):
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             fileName = anno['filename']
             raw_img = cv2.imread(fileName)
-            if raw_img == None:
-                newfile = fileName.replace('.jpg', '.jpeg') # Work around for different extension
-                raw_img = cv2.imread(newfile)
+            try:
+                if raw_img == None:
+                    newfile = fileName.replace('.jpg', '.jpeg') # Work around for different extension
+                    raw_img = cv2.imread(newfile)
+            except:
+                pass
             raw_img = cv2.resize(raw_img, (width, height))
             boundboxes = anno['bbs']
             boundboxes = self._scale_boxes(boundboxes, raw_img.shape[0], raw_img.shape[1], height, width)
