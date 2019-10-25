@@ -595,7 +595,7 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
                             batch_size=batch_size,
                             threshold=threshold)([img, bigPred, true_box_3, true_boxes])
     trainModel = Model([img, true_boxes, true_box_1, true_box_2, true_box_3], [loss_small, loss_mid, loss_big])
-    inferModel = Model([img, smallPred, midPred, bigPred])
+    inferModel = Model(img, [smallPred, midPred, bigPred])
     return [trainModel, inferModel]
 #---------------------------------
 
