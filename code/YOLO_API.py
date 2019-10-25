@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 import pickle
 import random as rand
 import copy
+import glob
 
 import imgaug as ia
 from imgaug import augmenters as iaa
@@ -108,14 +109,22 @@ class YoloV3_API():
 
         history = self.train_model.fit_generator(
             generator=self.train_generator,
+            validation_data=self.valid_generator,
             steps_per_epoch=len(self.train_generator),
             epochs=epoch,
-            callbacks=callbacks,
-            workers=4,
-            max_queue_size=8)
+            callbacks=callbacks)
         return history
 
-    def predict(self):
+    def predict(self, img_dir):
+        '''Predict all images in test folder using inference model'''
+        file_types = ('\*.jpg', '\*.jpeg')
+        test_images = []
+        for files in file_types:
+            test_images.extend(glob.glob(img_dir + files))
+        
+        for img in test_images:
+            image = cv2.imread(img)
+            img_height, img_width, _ = image[0].shape
         pass
 
     def _process_dataset(self, img_dir, annotation_dir):
@@ -538,10 +547,10 @@ def createYoloLyr(inputs, convLyrs, skip=True):
 def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
     '''Main YOLOv3 Model'''
     img = Input(shape=(None,None,3))
-    true_boxes = Input(shape=(1,1,1,max_boxes, 4))
-    true_box_1 = Input(shape=(None, None, len(anchors)//6, 5+numcls))
-    true_box_2 = Input(shape=(None, None, len(anchors)//6, 5+numcls))
-    true_box_3 = Input(shape=(None, None, len(anchors)//6, 5+numcls))
+    true_bboxes = Input(shape=(1,1,1,max_boxes, 4))
+    true_bbox_1 = Input(shape=(None, None, len(anchors)//6, 5+numcls))
+    true_bbox_2 = Input(shape=(None, None, len(anchors)//6, 5+numcls))
+    true_bbox_3 = Input(shape=(None, None, len(anchors)//6, 5+numcls))
     x = createYoloLyr(img, [
         {'filters': 32, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 64, 'kernel_size': 3, 'strides': 2, 'bnorm': True, 'leakyRelu': True},
@@ -586,13 +595,13 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
         {'filters': 512, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 1024, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 512, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
-    smallPred = createYoloLyr(x, [
+    bigPred = createYoloLyr(x, [
         {'filters': 1024, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': (3*(5 + numcls)), 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
-    loss_small = YoloLossLayer(anchors=anchors[12:],
+    loss_big = YoloLossLayer(anchors=anchors[12:],
                                 max_grid=[1*num for num in max_grid],
                                 batch_size=batch_size,
-                                threshold=threshold)([img, smallPred, true_box_1, true_boxes])
+                                threshold=threshold)([img, bigPred, true_box_1, true_boxes])
     x = createYoloLyr(x, [{'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
     x = UpSampling2D(2)(x)
     x = concatenate([x, out2])
@@ -613,7 +622,7 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
         {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
     x = UpSampling2D(2)(x)
     x = concatenate([x, out1])
-    bigPred = createYoloLyr(x, [
+    smallPred = createYoloLyr(x, [
         {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 256, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
@@ -621,12 +630,12 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
         {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': (3*(5+ numcls)), 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
-    loss_big = YoloLossLayer(anchors=anchors[:6],
+    loss_small = YoloLossLayer(anchors=anchors[:6],
                             max_grid=[4*num for num in max_grid],
                             batch_size=batch_size,
-                            threshold=threshold)([img, bigPred, true_box_3, true_boxes])
-    trainModel = Model([img, true_boxes, true_box_1, true_box_2, true_box_3], [loss_small, loss_mid, loss_big])
-    inferModel = Model(img, [smallPred, midPred, bigPred])
+                            threshold=threshold)([img, smallPred, true_bbox_3, true_bboxes])
+    trainModel = Model([img, true_bboxes, true_bbox_1, true_bbox_2, true_bbox_3], [loss_big, loss_mid, loss_small])
+    inferModel = Model(img, [bigPred, midPred, smallPred])
     return [trainModel, inferModel]
 #---------------------------------
 
