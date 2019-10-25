@@ -41,8 +41,22 @@ from keras.optimizers import Adam
 class YoloV3_API():
     def __init__(self, img_dir, annotation_dir, train_size, height=416, width=416, threshold=0.5, batch_size=16, shuffle=True):
         '''Ctor'''
+        print(f'Image directory: {img_dir}')
+        print(f'Annotation directory: {annotation_dir}')
+        print(f'Train/validation size ratio: {str(train_size)}')
+        print(f'Training size: {str(height)}x{str(width)}')
+        print(f'Threshold: {str(threshold)}')
+        print(f'Batch Size: {str(batch_size)}\n')
+
         self.all_anno, self.labels, self.anchor_boxes = self._process_dataset(img_dir, annotation_dir)
+        print(f'All Image and annotation size: {len(self.all_anno)}')
+        print(f'Unique labels: {str(self.labels)}')
+        print(f'Generated Anchor Boxes: {str(self.anchor_boxes)}\n')
+        
         self.train_anno, self.valid_anno, self.max_boxes = self._train_valid_split(self.all_anno, train_size)
+        print(f'Training image and annotation size: {len(self.train_anno)}')
+        print(f'Validation image and annotation size: {len(self.valid_anno)}')
+        print(f'Maximum bounding boxes in all images: {str(self.max_boxes)}\n')
 
         self.train_generator = DataGenerator(
             annotations=self.train_anno,
@@ -53,6 +67,7 @@ class YoloV3_API():
             width=width,
             height=height,
             shuffle=shuffle)
+        print('Train Generator created: To access, use <YoloV3_API.train_generator>')
 
         self.valid_generator = DataGenerator(
             annotations=self.valid_anno,
@@ -63,15 +78,20 @@ class YoloV3_API():
             width=width,
             height=height,
             shuffle=shuffle)
+        print('Validation Generator created: To access, use <YoloV3_API.valid_generator>\n')
 
-        self.train_model, self.infer_mode = YoloV3(
+        self.train_model, self.infer_model = YoloV3(
             numcls=len(self.labels),
             anchors=self.anchor_boxes,
             max_grid=[416, 416],
             batch_size=batch_size,
             threshold=threshold,
             max_boxes=self.max_boxes)
-
+        print(f'YOLOv3 Training Model created: To access, use <YoloV3_API.train_model>')
+        print(self.train_model.summary())
+        print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>')
+        print(self.infer_model.summary())
+        
     def fit_generator(self, epoch=300):
         '''Fit with augmentation'''
         callback = create_callbacks()
@@ -85,7 +105,7 @@ class YoloV3_API():
         history = self.train_model.fit_generator(
             generator=self.train_generator,
             steps_per_epoch=len(self.train_generator),
-            epochs=300,
+            epochs=epoch,
             callbacks=callback,
             workers=4,
             max_queue_size=8)
@@ -191,7 +211,7 @@ def calculate_kMeans(anno_arr, num_anchor):
             distance = 1 - calculate_iou(anno_arr[idx], sample_centroids)
             distances.append(distance)
         distances_arr = np.array(distances)
-        print(f'iter: {iterations} distances: {np.sum(np.abs(curr_distances-distances_arr))}')
+        # print(f'iter: {iterations} distances: {np.sum(np.abs(curr_distances-distances_arr))}')
         assign_centroids = np.argmin(distances_arr, axis=1)
         if (assign_centroids == curr_assign_centroids).all():
             return sample_centroids
