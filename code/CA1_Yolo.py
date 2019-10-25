@@ -39,10 +39,12 @@ from keras.optimizers import Adam
 #%%
 #---------- API for YoloV3 ----------
 class YoloV3_API():
-    def __init__(self, img_dir, annotation_dir, train_size, height=416, width=416, threshold=0.5, batch_size=16, shuffle=True):
+    def __init__(self, img_dir, annotation_dir, saved_model_name, train_size, height=416, width=416, threshold=0.5, batch_size=16, shuffle=True):
         '''Ctor'''
+        self.saved_model_name=saved_model_name
         print(f'Image directory: {img_dir}')
         print(f'Annotation directory: {annotation_dir}')
+        print(f'Saved model name: {self.saved_model_name}')
         print(f'Train/validation size ratio: {str(train_size)}')
         print(f'Training size: {str(height)}x{str(width)}')
         print(f'Threshold: {str(threshold)}')
@@ -88,25 +90,27 @@ class YoloV3_API():
             threshold=threshold,
             max_boxes=self.max_boxes)
         print(f'YOLOv3 Training Model created: To access, use <YoloV3_API.train_model>')
+        print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>\n')
+        print('Train Model Summary')
         print(self.train_model.summary())
-        print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>')
+        print('\nValidation Model Summary')
         print(self.infer_model.summary())
         
-    def fit_generator(self, epoch=300):
+    def fit_generator(self, epoch=300, lr=1e-4):
         '''Fit with augmentation'''
-        callback = create_callbacks()
+        callbacks = create_callbacks(self.saved_model_name)
 
         def dummy_loss(y_true, y_pred):
             return tf.sqrt(tf.reduce_sum(y_pred))
 
-        opt = Adam(lr=1e-4, clipnorm=0.001)
+        opt = Adam(lr=lr)
         self.train_model.compile(loss=dummy_loss, optimizer=opt)
 
         history = self.train_model.fit_generator(
             generator=self.train_generator,
             steps_per_epoch=len(self.train_generator),
             epochs=epoch,
-            callbacks=callback,
+            callbacks=callbacks,
             workers=4,
             max_queue_size=8)
         return history
@@ -386,11 +390,11 @@ class DataGenerator(Sequence):
 #----------------------------------------------
 #%%
 #----------Callback----------
-def create_callbacks():
+def create_callbacks(filepath):
     return [
         EarlyStopping(
             monitor='loss',
-            mode='auto',
+            mode='min',
             min_delta=0.01,
             patience=7,
             verbose=1),
@@ -398,9 +402,16 @@ def create_callbacks():
             monitor='loss',
             patience=7,
             verbose=1,
-            mode='auto',
+            mode='min',
             min_delta=0.01),
-    ]
+        ModelCheckpoint(
+            filepath=filepath,
+            monitor='loss',
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=True,
+            mode='min',
+            period=1)]
 #----------------------------
 #----------Loss Layer----------
 # Refering to this https://keras.io/layers/writing-your-own-keras-layers/
