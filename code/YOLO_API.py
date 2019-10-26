@@ -128,7 +128,7 @@ class YoloV3_API():
         '''Perform non max suppression on bounding boxes'''
         # num_classes = len(boxes[0].label)
         pass
-    
+
     def _prepare_input_img(self, img_path):
         '''Prep input img to correct dimension and size'''
         expected_height, expected_width = 416, 416
@@ -314,7 +314,7 @@ class DataGenerator(Sequence):
             iaa.Affine(translate_px={"x": (1, 5)})
         ])
         return seq(images=images, bounding_boxes=bbs)
-    
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
     def _current_size(self, idx):
         '''Set the image size for the current image, change size every 10 image'''
         if idx%10 == 0:
@@ -350,10 +350,10 @@ class DataGenerator(Sequence):
         input_images = np.zeros((next_indices - curr_indices, height, width, 3))
         groundtruths = np.zeros((next_indices - curr_indices, 1, 1, 1, self.max_boxes, 4))
 
-        yolo_smallout = np.zeros((next_indices - curr_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        yolo_bigout = np.zeros((next_indices - curr_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
         yolo_midout = np.zeros((next_indices - curr_indices, 2 * grid_height, 2 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
-        yolo_bigout = np.zeros((next_indices - curr_indices, 4 * grid_height, 4 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
-        all_out = [yolo_bigout, yolo_midout, yolo_smallout]
+        yolo_smallout = np.zeros((next_indices - curr_indices, 4 * grid_height, 4 * grid_width, len(self.anchors)//3, 5+len(self.labels)))
+        all_out = [yolo_smallout, yolo_midout, yolo_bigout]
         yolo_loss1 = np.zeros((next_indices - curr_indices, 1))
         yolo_loss2 = np.zeros((next_indices - curr_indices, 1))
         yolo_loss3 = np.zeros((next_indices - curr_indices, 1))
@@ -397,7 +397,7 @@ class DataGenerator(Sequence):
                 true_box_idx = true_box_idx % self.max_boxes
             input_images[img_count] = img/255
             img_count += 1
-        return [input_images, groundtruths, yolo_smallout, yolo_midout, yolo_bigout], [yolo_loss1, yolo_loss2, yolo_loss3]    
+        return [input_images, groundtruths, yolo_bigout, yolo_midout, yolo_smallout], [yolo_loss1, yolo_loss2, yolo_loss3]    
 
     def _get_best_anchor(self, boundbox):
         '''Compare bounding box with all anchors and find best match'''
