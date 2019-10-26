@@ -117,20 +117,33 @@ class YoloV3_API():
 
     def predict(self, img_path):
         '''Predict all images in test folder using inference model'''
-        # file_types = ('\*.jpg', '\*.jpeg')
-        # test_images = []
-        # for files in file_types:
-        #     test_images.extend(glob.glob(img_dir + files))
-        
-        # for img in test_images:
+        # Load weights to inference model
+        self._load_weights_to_infer_model()
+        # Read image
         image = cv2.imread(img_path)
         img_height, img_width, _ = image[0].shape
-        
+    
 
     def _non_max_suppression(self, bboxes, threshold):
         '''Perform non max suppression on bounding boxes'''
         # num_classes = len(boxes[0].label)
         pass
+    
+    def _prepare_input_img(self, img_path):
+        '''Prep input img to correct dimension and size'''
+        expected_height, expected_width = 416, 416
+        img = cv2.imread(img_path)
+        img_resized = cv2.resize(img[:,:,::-1]/255, (expected_width, expected_height))
+        input_img = np.expand_dims(img_resized, 0) # Dimension = (1, 416, 416, 3)
+        return input_img
+
+    def _load_weights_to_infer_model(self):
+        '''Load saved weights to inference model'''
+        try:
+            self.infer_model.load_weights(self.saved_model_name)
+        except:
+            print('Error loading weights to inference model!')
+            return
 
     def _process_dataset(self, img_dir, annotation_dir):
         '''Read all annotation files and generate anchor boxes'''
