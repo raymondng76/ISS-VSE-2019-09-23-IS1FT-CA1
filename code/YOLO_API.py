@@ -115,16 +115,21 @@ class YoloV3_API():
             callbacks=callbacks)
         return history
 
-    def predict(self, img_dir):
+    def predict(self, img_path):
         '''Predict all images in test folder using inference model'''
-        file_types = ('\*.jpg', '\*.jpeg')
-        test_images = []
-        for files in file_types:
-            test_images.extend(glob.glob(img_dir + files))
+        # file_types = ('\*.jpg', '\*.jpeg')
+        # test_images = []
+        # for files in file_types:
+        #     test_images.extend(glob.glob(img_dir + files))
         
-        for img in test_images:
-            image = cv2.imread(img)
-            img_height, img_width, _ = image[0].shape
+        # for img in test_images:
+        image = cv2.imread(img_path)
+        img_height, img_width, _ = image[0].shape
+        
+
+    def _non_max_suppression(self, bboxes, threshold):
+        '''Perform non max suppression on bounding boxes'''
+        # num_classes = len(boxes[0].label)
         pass
 
     def _process_dataset(self, img_dir, annotation_dir):
@@ -601,7 +606,7 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
     loss_big = YoloLossLayer(anchors=anchors[12:],
                                 max_grid=[1*num for num in max_grid],
                                 batch_size=batch_size,
-                                threshold=threshold)([img, bigPred, true_box_1, true_boxes])
+                                threshold=threshold)([img, bigPred, true_bbox_1, true_bboxes])
     x = createYoloLyr(x, [{'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
     x = UpSampling2D(2)(x)
     x = concatenate([x, out2])
@@ -617,7 +622,7 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
     loss_mid = YoloLossLayer(anchors=anchors[6:12],
                             max_grid=[2*num for num in max_grid],
                             batch_size=batch_size,
-                            threshold=threshold)([img, midPred, true_box_2, true_boxes])
+                            threshold=threshold)([img, midPred, true_bbox_2, true_bboxes])
     x = createYoloLyr(x, [
         {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
     x = UpSampling2D(2)(x)
