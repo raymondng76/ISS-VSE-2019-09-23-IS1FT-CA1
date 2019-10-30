@@ -307,11 +307,13 @@ class DataGenerator(Sequence):
         if self.shuffle:
             np.random.shuffle(self.index)
     
-    def augmentation_with_boundingboxes(self, images, bbs):
+    def _augmentation_with_boundingboxes(self, images, bbs):
         '''Image augmentation with imgaug'''
         seq = iaa.Sequential([
             iaa.AdditiveGaussianNoise(scale=0.05*255),
-        ])
+            iaa.Sharpen(alpha=(0,1.0), lightness=(0.75,1.5)),
+            iaa.LinearContrast((0.5, 2.0), per_channel=0.5),
+            iaa.Invert(0.05, per_channel=True)])
         return seq(images=images, bounding_boxes=bbs)
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
     def _current_size(self, idx):
@@ -421,7 +423,8 @@ class DataGenerator(Sequence):
             
             raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
             img, bbs = self._multi_scale_image(raw_img, height, width)
-
+            img, bbs = self._augmentation_with_boundingboxes(img, bbs)
+            
             for box in bbs.bounding_boxes:
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
