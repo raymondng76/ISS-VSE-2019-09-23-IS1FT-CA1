@@ -321,22 +321,72 @@ class DataGenerator(Sequence):
                                                          self.max_size/self.basefactor+1)
             self.height, self.width = net_size, net_size
         return self.height, self.width
+   
+    def _limit_range(self, value, lowerBound, higherBound):
+        if value < lowerBound: return lowerBound
+        if value > higherBound: return higherBound
+        return value
 
-    def _scale_boxes(self, boxes, img_height, img_width, new_height, new_width):
-        '''Scale bounding boxes according to image resize scale'''
-        all_boxes = copy.deepcopy(boxes)
-        xScale, yScale = float(new_width) / img_width, float(new_height) / img_height
-        box_list = []
-        for box in boxes.bounding_boxes:
-            scale_box = ia.BoundingBox(
-                x1=int(np.round(box.x1 * xScale)),
-                x2=int(np.round(box.x2 * xScale)),
-                y1=int(np.round(box.y1 * yScale)),
-                y2=int(np.round(box.y2 * yScale)),
-                label=box.label)
-            box_list.append(scale_box)
-        return ia.BoundingBoxesOnImage(box_list, (new_width, new_height))
-    
+    def _multi_scale_boundingboxes(self, boxes, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_h, img_w):
+        boxes = copy.deepcopy(boxes)
+        boundboxes = boxes.bounding_boxes
+
+        x_scale = float(rescale_width)/img_w
+        y_scale = float(rescale_height)/img_h
+
+        empty_boxes = []
+        for idx in range(len(boundboxes)):
+            boundboxes[idx].x1 = int(self._limit_range(0, currWidth, boundboxes[idx].x1 * x_scale + padIdx_X))
+            boundboxes[idx].x2 = int(self._limit_range(0, currWidth, boundboxes[idx].x2 * x_scale + padIdx_X))
+            boundboxes[idx].y1 = int(self._limit_range(0, currHeight, boundboxes[idx].y1 * y_scale + padIdx_Y))
+            boundboxes[idx].y2 = int(self._limit_range(0, currHeight, boundboxes[idx].y2 * y_scale + padIdx_Y))
+
+            if boundboxes[idx].x2 <= boundboxes[idx].x1 or boundboxes[idx].y2 <= boundboxes[idx].y1:
+                empty_boxes += idx
+                continue
+        scaled_boxes = [boundboxes[i] for i in range(len(boundboxes)) if i not in empty_boxes]
+        return ia.BoundingBoxesOnImage(scaled_boxes, (currWidth, currHeight))
+
+    def _multi_scale_image(self, img, currHeight, currWidth):
+        '''Scale and crop images according to current batch randomize image width and height'''
+        img_height, img_width, _ = img.shape
+        # Randomise the scale of the input images
+        random_scale = np.random.uniform(0.25, 2)
+        aspect_ratio = img_width/img_height
+        rescale_height = int(random_scale * currHeight) if aspect_ratio < 1 else int(currHeight / aspect_ratio)
+        rescale_width = int(currWidth * aspect_ratio) if aspect_ratio < 1 else int(random_scale * currWidth)
+        # Scale and crop
+        padIdx_X = int(np.random.uniform(0, currWidth - rescale_width))
+        padIdx_Y = int(np.random.uniform(0, currHeight - rescale_height))
+        img_resized = cv2.resize(img, (rescale_width, rescale_height))
+
+        if padIdx_X > 0:
+            img_resized = np.pad(array=img_resized,
+                                pad_width=((0,0),(padIdx_X,0),(0,0)),
+                                constant_values=0)
+        else:
+            img_resized = img_resized[:,-padIdx_X:,:]
+        
+        if (rescale_width + padIdx_X) < currHeight:
+            img_resized = np.pad(array=img_resized,
+                                pad_width=((0,0),(0,currWidth - (rescale_width + padIdx_X)),(0,0)),
+                                constant_values=0)
+        
+        if padIdx_Y > 0:
+            img_resized = np.pad(array=img_resized,
+                                pad_width=((padIdx_Y,0),(0,0),(0,0)),
+                                constant_values=0)
+        else:
+            img_resized = img_resized[-padIdx_Y:,:,:]
+
+        if (rescale_height + padIdx_Y) < currHeight:
+            img_resized = np.pad(array=img_resized,
+                                pad_width=((0,currHeight - (rescale_height + padIdx_Y)),(0,0),(0,0)),
+                                constant_values=0)
+        img_resized =  img_resized[:currHeight, :currWidth,:]
+        bbs_resized = self._multi_scale_boundingboxes(img_resized, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_height, img_width)
+        return img_resized, bbs_resized    
+
     def __getitem__(self, index):
         '''Get input per batch'''
         height, width = self._current_size(index)
@@ -368,10 +418,10 @@ class DataGenerator(Sequence):
                     raw_img = cv2.imread(newfile)
             except:
                 pass
-            raw_img = cv2.resize(raw_img, (width, height))
-            boundboxes = anno['bbs']
-            boundboxes = self._scale_boxes(boundboxes, raw_img.shape[0], raw_img.shape[1], height, width)
-            img, bbs = self.augmentation_with_boundingboxes(raw_img, boundboxes)
+            
+            raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
+            img, bbs = self._multi_scale_image(raw_img, height, width)
+
             for box in bbs.bounding_boxes:
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
