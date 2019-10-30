@@ -403,7 +403,7 @@ class DataGenerator(Sequence):
         max_anchor = None
         max_index = -1
         max_iou = -1
-        bb = ia.BoundingBox(x1=0.0, y1=0.0, x2=boundbox.x2, y2=boundbox.y2)
+        bb = ia.BoundingBox(x1=0.0, y1=0.0, x2=boundbox.x2-boundbox.x1, y2=boundbox.y2-boundbox.y1)
         for idx in range(len(self.anchors)):
             anchor = self.anchors[idx]
             iou = bb.iou(anchor)
