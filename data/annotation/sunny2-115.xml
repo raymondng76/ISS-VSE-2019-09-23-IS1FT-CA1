@@ -1,0 +1,25 @@
+<annotation>
+  <folder/>
+  <filename>sunny2-115.jpg</filename>
+  <database>The VOC2007 Database</database>
+  <annotation>Pascal VOC2007</annotation>
+  <image/>
+  <size>
+    <height>720</height>
+    <width>1280</width>
+    <depth>3</depth>
+  </size>
+  <segmented/>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>907.2436974789916</xmin>
+      <ymin>409.4033613445378</ymin>
+      <xmax>950.9411764705883</xmax>
+      <ymax>442.17647058823536</ymax>
+    </bndbox>
+  </object>
+</annotation>

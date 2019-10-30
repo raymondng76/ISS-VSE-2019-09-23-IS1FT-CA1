@@ -1,0 +1,49 @@
+<annotation>
+  <folder/>
+  <filename>1003-045.jpg</filename>
+  <database>The VOC2007 Database</database>
+  <annotation>Pascal VOC2007</annotation>
+  <image/>
+  <size>
+    <height>1080</height>
+    <width>1920</width>
+    <depth>3</depth>
+  </size>
+  <segmented/>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>841.3734939759036</xmin>
+      <ymin>587.7349397590361</ymin>
+      <xmax>1066.6746987951806</xmax>
+      <ymax>779.301204819277</ymax>
+    </bndbox>
+  </object>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>1112.4578313253012</xmin>
+      <ymin>591.3493975903614</ymin>
+      <xmax>1355.8313253012047</xmax>
+      <ymax>746.7710843373493</ymax>
+    </bndbox>
+  </object>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>1638.9638554216865</xmin>
+      <ymin>543.156626506024</ymin>
+      <xmax>1910.0481927710841</xmax>
+      <ymax>826.2891566265059</ymax>
+    </bndbox>
+  </object>
+</annotation>

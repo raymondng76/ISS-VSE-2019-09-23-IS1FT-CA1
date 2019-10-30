@@ -1,0 +1,49 @@
+<annotation>
+  <folder/>
+  <filename>sunny2-112.jpg</filename>
+  <database>The VOC2007 Database</database>
+  <annotation>Pascal VOC2007</annotation>
+  <image/>
+  <size>
+    <height>720</height>
+    <width>1280</width>
+    <depth>3</depth>
+  </size>
+  <segmented/>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>865.2268907563025</xmin>
+      <ymin>393.436974789916</ymin>
+      <xmax>1076.9915966386554</xmax>
+      <ymax>531.2521008403362</ymax>
+    </bndbox>
+  </object>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>1050.9411764705883</xmin>
+      <ymin>358.98319327731093</ymin>
+      <xmax>1274.4705882352941</xmax>
+      <ymax>579.1512605042017</ymax>
+    </bndbox>
+  </object>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>703.0420168067227</xmin>
+      <ymin>406.0420168067227</ymin>
+      <xmax>736.655462184874</xmax>
+      <ymax>432.09243697478996</ymax>
+    </bndbox>
+  </object>
+</annotation>

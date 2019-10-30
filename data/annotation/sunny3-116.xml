@@ -1,0 +1,37 @@
+<annotation>
+  <folder/>
+  <filename>sunny3-116.jpg</filename>
+  <database>YoloV3</database>
+  <annotation>YoloV3_car_bus_sunny3</annotation>
+  <image/>
+  <size>
+    <height>720</height>
+    <width>1280</width>
+    <depth>3</depth>
+  </size>
+  <segmented/>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>544.2184873949581</xmin>
+      <ymin>420.32773109243703</ymin>
+      <xmax>564.3865546218487</xmax>
+      <ymax>432.9327731092437</ymax>
+    </bndbox>
+  </object>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>569.4285714285714</xmin>
+      <ymin>408.56302521008405</ymin>
+      <xmax>609.7647058823529</xmax>
+      <ymax>447.21848739495806</ymax>
+    </bndbox>
+  </object>
+</annotation>

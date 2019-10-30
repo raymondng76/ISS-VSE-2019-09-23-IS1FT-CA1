@@ -1,0 +1,25 @@
+<annotation>
+  <folder/>
+  <filename>1003-088.jpg</filename>
+  <database>The VOC2007 Database</database>
+  <annotation>Pascal VOC2007</annotation>
+  <image/>
+  <size>
+    <height>1080</height>
+    <width>1920</width>
+    <depth>3</depth>
+  </size>
+  <segmented/>
+  <object>
+    <name>car</name>
+    <pose/>
+    <truncated/>
+    <difficult/>
+    <bndbox>
+      <xmin>881.6075949367088</xmin>
+      <ymin>616.4050632911392</ymin>
+      <xmax>918.3164556962025</xmax>
+      <ymax>646.7848101265822</ymax>
+    </bndbox>
+  </object>
+</annotation>
