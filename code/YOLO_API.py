@@ -349,7 +349,7 @@ class DataGenerator(Sequence):
         scaled_boxes = [boundboxes[i] for i in range(len(boundboxes)) if i not in empty_boxes]
         return ia.BoundingBoxesOnImage(scaled_boxes, (currWidth, currHeight))
 
-    def _multi_scale_image(self, img, currHeight, currWidth):
+    def _multi_scale_image(self, img, bbs, currHeight, currWidth):
         '''Scale and crop images according to current batch randomize image width and height'''
         img_height, img_width, _ = img.shape
         # Randomise the scale of the input images
@@ -386,7 +386,7 @@ class DataGenerator(Sequence):
                                 pad_width=((0,currHeight - (rescale_height + padIdx_Y)),(0,0),(0,0)),
                                 constant_values=0)
         img_resized =  img_resized[:currHeight, :currWidth,:]
-        bbs_resized = self._multi_scale_boundingboxes(img_resized, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_height, img_width)
+        bbs_resized = self._multi_scale_boundingboxes(bbs, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_height, img_width)
         return img_resized, bbs_resized    
 
     def __getitem__(self, index):
@@ -422,9 +422,10 @@ class DataGenerator(Sequence):
                 pass
             
             raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
-            img, bbs = self._multi_scale_image(raw_img, height, width)
+            anno_bbs = anno['bbs']
+            img, bbs = self._multi_scale_image(raw_img, anno_bbs, height, width)
             img, bbs = self._augmentation_with_boundingboxes(img, bbs)
-            
+
             for box in bbs.bounding_boxes:
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
