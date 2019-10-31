@@ -344,7 +344,7 @@ class DataGenerator(Sequence):
             boundboxes[idx].y2 = int(self._limit_range(0, currHeight, boundboxes[idx].y2 * y_scale + padIdx_Y))
 
             if boundboxes[idx].x2 <= boundboxes[idx].x1 or boundboxes[idx].y2 <= boundboxes[idx].y1:
-                empty_boxes += idx
+                empty_boxes.append(idx)
                 continue
         scaled_boxes = [boundboxes[i] for i in range(len(boundboxes)) if i not in empty_boxes]
         return ia.BoundingBoxesOnImage(scaled_boxes, (currWidth, currHeight))
