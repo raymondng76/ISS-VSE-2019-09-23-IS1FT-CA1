@@ -16,6 +16,8 @@ import glob
 import imgaug as ia
 from imgaug import augmenters as iaa
 
+from scipy.special import expit #sigmoid
+
 from keras import regularizers
 from keras.models import Model
 from keras.layers import Conv2D
@@ -90,6 +92,9 @@ class YoloV3_API():
             batch_size=batch_size,
             threshold=threshold,
             max_boxes=self.max_boxes)
+
+        self.train_model.load_weights('Yolov3_pretrained_weights.h5')
+
         print(f'YOLOv3 Training Model created: To access, use <YoloV3_API.train_model>')
         print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>\n')
         print('Train Model Summary')
@@ -117,11 +122,39 @@ class YoloV3_API():
 
     def predict(self, img_path):
         '''Predict all images in test folder using inference model'''
+        pass
         # Load weights to inference model
-        self._load_weights_to_infer_model()
-        # Read image
-        image = cv2.imread(img_path)
-        img_height, img_width, _ = image[0].shape
+        # self._load_weights_to_infer_model()
+        # # Read image
+        # image = cv2.imread(img_path)
+        # img_height, img_width, _ = image[0].shape
+        # imgRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # if (float(self.width)/img_width) < (float(self.height)/img_height):
+        #     rescale_height = (img_height * self.width) // img_width
+        #     rescale_width = img_width
+        # else:
+        #     rescale_width = (img_width * self.height) // img_height
+        #     rescale_height = img_height
+        
+        # img_resized = cv2.resize(imgRGB/255., (rescale_width, rescale_height))
+        # img = np.ones((self.height, self.width, 3)) * 0.5
+        # img[(self.height - rescale_height)//2 : (self.height + rescale_height)//2, (self.width - rescale_width)//2 : (self.width + rescale_width)//2, :] = img_resized
+        # img = np.expand_dims(img, 0)
+
+        # self._load_weights_to_infer_model()
+        # pred = self.infer_model.predict(img)
+
+        # pred_boxes = []
+        # for lyr in range(len(pred)):
+        #     currPred = pred[lyr][0]
+        #     lyr_anchors = self.anchor_boxes[(2 - lyr) * 6 : (3 - lyr) * 6]
+        #     grid_height, grid_width = pred.shape[:2]
+        #     box_count = 3
+        #     output = pred.reshape((grid_height, grid_width, box_count, -1))
+
+        #     pred_boxes = []
+        #     pred[...,:2] = expit
     
 
     def _non_max_suppression(self, bboxes, threshold):
@@ -503,7 +536,6 @@ class YoloLossLayer(Layer):
         def call(self)'''
     def __init__(self, anchors, max_grid, batch_size, threshold, **kwargs):
         self.anchors = tf.constant(anchors, dtype='float', shape=[1,1,1,3,2])
-        # self.anchors=anchors
         maxgrid_h, maxgrid_w = max_grid
         cell_x = tf.to_float(tf.reshape(tf.tile(tf.range(maxgrid_w), [maxgrid_h]), (1, maxgrid_h, maxgrid_w, 1, 1)))
         cell_y = tf.transpose(cell_x, (0,2,1,3,4))
@@ -578,7 +610,7 @@ class YoloLossLayer(Layer):
 
         xy_delta    = xywh_mask   * (pred_box_xy-true_box_xy) * wh_scale
         wh_delta    = xywh_mask   * (pred_box_wh-true_box_wh) * wh_scale
-        conf_delta  = object_mask * (pred_box_conf-true_box_conf) + (1-object_mask) * conf_delta
+        conf_delta  = object_mask * (pred_box_conf-true_box_conf) * 5 + (1-object_mask) * conf_delta
         class_delta = object_mask * \
                       tf.expand_dims(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=true_box_class, logits=pred_box_class), 4)
 
@@ -610,10 +642,7 @@ def createYoloLyr(inputs, convLyrs, skip=True):
             x = BatchNormalization(epsilon=0.001)(x)
         if convLyr['leakyRelu']:
             x = LeakyReLU(alpha=0.1)(x)
-    if skip:
-        return add([skip_connection, x])
-    else:
-        return x
+    return add([skip_connection, x]) if skip else x
 
 def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
     '''Main YOLOv3 Model'''
@@ -673,7 +702,7 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
                                 max_grid=[1*num for num in max_grid],
                                 batch_size=batch_size,
                                 threshold=threshold)([img, bigPred, true_bbox_1, true_bboxes])
-    x = createYoloLyr(x, [{'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
+    x = createYoloLyr(x, [{'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True}], skip=False)
     x = UpSampling2D(2)(x)
     x = concatenate([x, out2])
     x = createYoloLyr(x, [
@@ -699,7 +728,7 @@ def YoloV3(numcls,anchors, max_grid, batch_size, threshold, max_boxes):
         {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 256, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': 128, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
-        {'filters': 256, 'kernel_size': 1, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
+        {'filters': 256, 'kernel_size': 3, 'strides': 1, 'bnorm': True, 'leakyRelu': True},
         {'filters': (3*(5+ numcls)), 'kernel_size': 1, 'strides': 1, 'bnorm': False, 'leakyRelu': False}], skip=False)
     loss_small = YoloLossLayer(anchors=anchors[:6],
                             max_grid=[4*num for num in max_grid],
