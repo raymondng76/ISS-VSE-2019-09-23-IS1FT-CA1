@@ -13,7 +13,7 @@ import random as rand
 import copy
 import glob
 
-import imgaug as ia
+# import imgaug as ia
 from imgaug import augmenters as iaa
 
 from scipy.special import expit #sigmoid
@@ -194,6 +194,89 @@ class YoloV3_API():
         max_boxes = max([len(anno['object']) for anno in (train_anno + valid_anno)])
         return train_anno, valid_anno, max_boxes
 #------------------------------------
+#----------Bounding Box class and utils----------
+#%%
+class BoundingBox:
+    def __init__(self, xmin, xmax, ymin, ymax, classes=None, label=None):
+        self.xmin=xmin
+        self.xmax=xmax
+        self.ymin=ymin
+        self.ymax=ymax
+        self.label=label
+        self.classes=classes
+    
+    def __str__(self):
+        return f'xmin: {self.xmin}, xmax: {self.xmax}, ymin: {self.ymin}, ymax: {self.ymax}, label: {self.label}'
+    
+    def get_label(self):
+        if self.label == -1:
+            self.label = np.argmax(self.classes)
+        
+        return self.label
+    
+    def get_score(self):
+        if self.score == -1:
+            self.score = self.classes[self.get_label()]
+            
+        return self.score    
+
+def calculate_bb_iou(boundbox1, boundbox2):
+    if boundbox2.xmin < boundbox1.xmin:
+        if boundbox2.xmax < boundbox1.xmin:
+            xIntersect = 0
+        else:
+            xIntersect = min(boundbox1.xmax, boundbox2.xmax) - boundbox1.xmin
+    else:
+        if boundbox1.xmax < boundbox2.xmin:
+            xIntersect = 0
+        else:
+            xIntersect = min(boundbox1.xmax, boundbox2.xmax) - boundbox2.xmin
+    if boundbox2.ymin < boundbox1.ymin:
+        if boundbox2.ymax < boundbox1.ymin:
+            yIntersect = 0
+        else:
+            yIntersect = min(boundbox1.ymax, boundbox2.ymax) - boundbox1.ymin
+    else:
+        if boundbox1.ymax < boundbox2.ymin:
+            yIntersect = 0
+        else:
+            yIntersect = min(boundbox1.ymax, boundbox2.ymax) - boundbox2.ymin
+    
+    intersect = xIntersect * yIntersect
+    union = ((boundbox1.xmax - boundbox1.xmin) * (boundbox1.ymax - boundbox1.ymin)) + ((boundbox2.xmax - boundbox2.xmin) * (boundbox2.ymax - boundbox2.ymin)) - intersect
+    return float(intersect) / union
+
+# def draw_boxes(image, boxes, labels, obj_thresh):
+#     for box in boxes:
+#         # label_str = ''
+#         # label = -1
+        
+#         # for i in range(len(labels)):
+#         #     if box.classes[i] > obj_thresh:
+#         #         if label_str != '': label_str += ', '
+#         #         label_str += (labels[i] + ' ' + str(round(box.get_score()*100, 2)) + '%')
+#         #         label = i
+                
+#         # if label >= 0:
+#         #     text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, 1.1e-3 * image.shape[0], 5)
+#         #     width, height = text_size[0][0], text_size[0][1]
+#         #     region = np.array([[box.xmin-3,        box.ymin], 
+#         #                        [box.xmin-3,        box.ymin-height-26], 
+#         #                        [box.xmin+width+13, box.ymin-height-26], 
+#         #                        [box.xmin+width+13, box.ymin]], dtype='int32')  
+
+#             cv2.rectangle(img=image, pt1=(box.xmin,box.ymin), pt2=(box.xmax,box.ymax), color=(255,0,0), thickness=5)
+#             cv2.fillPoly(img=image, pts=[region], color=(255,0,0))
+#             cv2.putText(img=image, 
+#                         text=label_str, 
+#                         org=(box.xmin+13, box.ymin - 13), 
+#                         fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
+#                         fontScale=1e-3 * image.shape[0], 
+#                         color=(0,0,0), 
+#                         thickness=2)
+        
+#     return image        
+#------------------------------------------------
 #%%
 #----------VOC Parser----------
 def read_annotation_files(image_dir, annnotation_dir):
@@ -237,8 +320,8 @@ def read_annotation_files(image_dir, annnotation_dir):
         if len(img['object']) > 0:
             bb_list = []
             for obj in img['object']:
-                bb_list.append(ia.BoundingBox(x1=obj['xmin'], y1=obj['ymin'], x2=obj['xmax'], y2=obj['ymax'], label=obj['name']))
-            img['bbs'] = ia.BoundingBoxesOnImage(bb_list, shape=(img['width'], img['height']))
+                bb_list.append(BoundingBox(xmin=obj['xmin'], xmax=obj['xmax'], ymin=obj['ymin'], ymax=obj['ymax'], label=obj['name']))
+            img['bbs'] = bb_list
             all_annotations += [img]
     return all_annotations, labels.keys()
 #------------------------------
@@ -310,7 +393,7 @@ def generateAnchorBoxes(annotations, labels, num_anchor=9):
 #%%
 #----------Data generator with Imgaug----------
 #Refering to https://keras.io/utils/ (Sequence)
-class DataGenerator(Sequence):
+class YoloDataGenerator(Sequence):
     '''Generate data with augmentations using Keras Util Sequence API
         Required Methods:
         def __init__(self)
@@ -321,7 +404,7 @@ class DataGenerator(Sequence):
     def __init__(self, annotations, max_boxes, anchors, labels, batch_size=16, width=416, height=416, shuffle=True):
         self.annotations=annotations #instance
         self.max_boxes=max_boxes
-        self.anchors=[ia.BoundingBox(x1=0.0,y1=0.0,x2=anchors[2*i],y2=anchors[2*i+1]) for i in range(len(anchors)//2)]
+        self.anchors=self._init_anchors(anchors)
         self.labels=labels
         self.batch_size=batch_size
         self.shuffle=shuffle
@@ -331,6 +414,17 @@ class DataGenerator(Sequence):
         self.min_size=320
         self.max_size=608
         self.on_epoch_end()
+
+    def _init_anchors(self, anchors):
+        anchor_boxes = []
+        for i in range(len(anchors)//2):
+            a = anchors[2*i+1]
+            anchor_boxes.append(BoundingBox(
+                xmin=0.0,
+                xmax=anchors[2*i],
+                ymin=0.0,
+                ymax=anchors[2*i+1]))
+        return anchor_boxes
 
     def __len__(self):
         return int(np.ceil(float(len(self.annotations))//self.batch_size))
@@ -344,10 +438,11 @@ class DataGenerator(Sequence):
     def _augmentation_with_boundingboxes(self, images, bbs):
         '''Image augmentation with imgaug'''
         seq = iaa.Sequential([
-            iaa.AdditiveGaussianNoise(scale=0.05*255),
-            iaa.Sharpen(alpha=(0,1.0), lightness=(0.75,1.5)),
-            iaa.LinearContrast((0.5, 2.0), per_channel=0.5),
-            iaa.Invert(0.05, per_channel=True)])
+            # iaa.AdditiveGaussianNoise(scale=0.05*255),
+            # iaa.Sharpen(alpha=(0,1.0), lightness=(0.75,1.5)),
+            # iaa.LinearContrast((0.5, 2.0), per_channel=0.5),
+            # iaa.Invert(0.05, per_channel=True)
+            ])
         return seq(images=images, bounding_boxes=bbs)
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
     def _current_size(self, idx):
@@ -358,30 +453,29 @@ class DataGenerator(Sequence):
             self.height, self.width = net_size, net_size
         return self.height, self.width
    
-    def _limit_range(self, value, lowerBound, higherBound):
+    def _limit_range(self, lowerBound, higherBound, value):
         if value < lowerBound: return lowerBound
         if value > higherBound: return higherBound
         return value
 
     def _multi_scale_boundingboxes(self, boxes, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_h, img_w):
         boxes = copy.deepcopy(boxes)
-        boundboxes = boxes.bounding_boxes
+        # boundboxes = boxes.bounding_boxes
 
         x_scale = float(rescale_width)/img_w
         y_scale = float(rescale_height)/img_h
 
         empty_boxes = []
-        for idx in range(len(boundboxes)):
-            boundboxes[idx].x1 = int(self._limit_range(0, currWidth, boundboxes[idx].x1 * x_scale + padIdx_X))
-            boundboxes[idx].x2 = int(self._limit_range(0, currWidth, boundboxes[idx].x2 * x_scale + padIdx_X))
-            boundboxes[idx].y1 = int(self._limit_range(0, currHeight, boundboxes[idx].y1 * y_scale + padIdx_Y))
-            boundboxes[idx].y2 = int(self._limit_range(0, currHeight, boundboxes[idx].y2 * y_scale + padIdx_Y))
+        for idx in range(len(boxes)):
+            boxes[idx].xmin = int(self._limit_range(0, currWidth, boxes[idx].xmin * x_scale + padIdx_X))
+            boxes[idx].xmax = int(self._limit_range(0, currWidth, boxes[idx].xmax * x_scale + padIdx_X))
+            boxes[idx].ymin = int(self._limit_range(0, currHeight, boxes[idx].ymin * y_scale + padIdx_Y))
+            boxes[idx].ymax = int(self._limit_range(0, currHeight, boxes[idx].ymax * y_scale + padIdx_Y))
 
-            if boundboxes[idx].x2 <= boundboxes[idx].x1 or boundboxes[idx].y2 <= boundboxes[idx].y1:
+            if boxes[idx].xmax <= boxes[idx].xmin or boxes[idx].ymax <= boxes[idx].ymin:
                 empty_boxes.append(idx)
                 continue
-        scaled_boxes = [boundboxes[i] for i in range(len(boundboxes)) if i not in empty_boxes]
-        return ia.BoundingBoxesOnImage(scaled_boxes, (currWidth, currHeight))
+        return [boxes[i] for i in range(len(boxes)) if i not in empty_boxes]
 
     def _multi_scale_image(self, img, bbs, currHeight, currWidth):
         '''Scale and crop images according to current batch randomize image width and height'''
@@ -389,8 +483,9 @@ class DataGenerator(Sequence):
         # Randomise the scale of the input images
         random_scale = np.random.uniform(0.25, 2)
         aspect_ratio = img_width/img_height
-        rescale_height = int(random_scale * currHeight) if aspect_ratio < 1 else int(currHeight / aspect_ratio)
-        rescale_width = int(currWidth * aspect_ratio) if aspect_ratio < 1 else int(random_scale * currWidth)
+        rescale_height = int(random_scale * currHeight) if aspect_ratio < 1 else int(currWidth / aspect_ratio)
+        rescale_width = int(currHeight * aspect_ratio) if aspect_ratio < 1 else int(random_scale * currWidth)
+
         # Scale and crop
         padIdx_X = int(np.random.uniform(0, currWidth - rescale_width))
         padIdx_Y = int(np.random.uniform(0, currHeight - rescale_height))
@@ -399,27 +494,31 @@ class DataGenerator(Sequence):
         if padIdx_X > 0:
             img_resized = np.pad(array=img_resized,
                                 pad_width=((0,0),(padIdx_X,0),(0,0)),
-                                constant_values=0)
+                                constant_values=0,
+                                mode='constant')
         else:
             img_resized = img_resized[:,-padIdx_X:,:]
         
         if (rescale_width + padIdx_X) < currHeight:
             img_resized = np.pad(array=img_resized,
                                 pad_width=((0,0),(0,currWidth - (rescale_width + padIdx_X)),(0,0)),
-                                constant_values=0)
+                                constant_values=0,
+                                mode='constant')
         
         if padIdx_Y > 0:
             img_resized = np.pad(array=img_resized,
                                 pad_width=((padIdx_Y,0),(0,0),(0,0)),
-                                constant_values=0)
+                                constant_values=0,
+                                mode='constant')
         else:
             img_resized = img_resized[-padIdx_Y:,:,:]
 
         if (rescale_height + padIdx_Y) < currHeight:
             img_resized = np.pad(array=img_resized,
                                 pad_width=((0,currHeight - (rescale_height + padIdx_Y)),(0,0),(0,0)),
-                                constant_values=0)
-        img_resized =  img_resized[:currHeight, :currWidth,:]
+                                constant_values=127,
+                                mode='constant')
+        img_resized =  img_resized[:currHeight, :currWidth, :]
         bbs_resized = self._multi_scale_boundingboxes(bbs, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_height, img_width)
         return img_resized, bbs_resized    
 
@@ -433,7 +532,6 @@ class DataGenerator(Sequence):
             curr_indices = len(self.annotations)
             next_indices = curr_indices - self.batch_size
         input_images = np.zeros((next_indices - curr_indices, height, width, 3))
-        test_images = np.zeros((next_indices - curr_indices, height, width, 3))
         groundtruths = np.zeros((next_indices - curr_indices, 1, 1, 1, self.max_boxes, 4))
 
         yolo_bigout = np.zeros((next_indices - curr_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
@@ -459,16 +557,15 @@ class DataGenerator(Sequence):
             raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
             anno_bbs = anno['bbs']
             img, bbs = self._multi_scale_image(raw_img, anno_bbs, height, width)
-            img, bbs = self._augmentation_with_boundingboxes(img, bbs)
-
-            for box in bbs.bounding_boxes:
+            # img, bbs = self._augmentation_with_boundingboxes(img, bbs)
+            for box in bbs:
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
                 yolo_grid_height, yolo_grid_width = yolo_out.shape[1:3]
-                centerX = (0.5 * (box.x1 + box.x2)) / (float(width) * yolo_grid_width)
-                centerY = (0.5 * (box.y1 + box.y2)) / (float(height) * yolo_grid_height)
-                w = np.log((box.x2 - box.x1) / float(max_anchor.x2))
-                h = np.log((box.y2 - box.y1) / float(max_anchor.y2))
+                centerX = (0.5 * (box.xmin + box.xmax)) / (float(width) * yolo_grid_width)
+                centerY = (0.5 * (box.ymin + box.ymax)) / (float(height) * yolo_grid_height)
+                w = np.log((box.xmax - box.xmin) / float(max_anchor.xmax))
+                h = np.log((box.ymax - box.ymin) / float(max_anchor.ymax))
                 yolobox = [centerX, centerY, w, h]
                 anno_idx = list(self.labels).index(box.label)
                 gridX = int(np.floor(centerX))
@@ -479,16 +576,12 @@ class DataGenerator(Sequence):
                 yolo_out[img_count, gridY, gridX, max_index%3, 4] = 1.
                 yolo_out[img_count, gridY, gridX, max_index%3, 5+anno_idx] = 1
 
-                true_box = [centerX, centerY, box.x2 - box.x1, box.y2 - box.y1]
+                true_box = [centerX, centerY, box.xmax - box.xmin, box.ymax - box.ymin]
                 groundtruths[img_count, 0, 0, 0, true_box_idx] = true_box
                 true_box_idx += 1
                 true_box_idx = true_box_idx % self.max_boxes
             input_images[img_count] = img/255
             img_count += 1
-            for box in bbs.bounding_boxes:
-                cv2.rectangle(img,(box.x1,box.y1), (box.x2, box.y2), (255,0,0), 3)
-                cv2.putText(img, box.label, (box.x1+2, box.y1+12), 0, 1.2e-3 * img.shape[0], (0,255,0),2)
-                ia.imshow(img)
         return [input_images, groundtruths, yolo_bigout, yolo_midout, yolo_smallout], [yolo_loss1, yolo_loss2, yolo_loss3]    
 
     def _get_best_anchor(self, boundbox):
@@ -496,10 +589,14 @@ class DataGenerator(Sequence):
         max_anchor = None
         max_index = -1
         max_iou = -1
-        bb = ia.BoundingBox(x1=0.0, y1=0.0, x2=boundbox.x2-boundbox.x1, y2=boundbox.y2-boundbox.y1)
+        bb = BoundingBox(
+            xmin=0.0,
+            xmax=boundbox.xmax - boundbox.xmin,
+            ymin=0.0,
+            ymax=boundbox.ymax - boundbox.ymin)
         for idx in range(len(self.anchors)):
             anchor = self.anchors[idx]
-            iou = bb.iou(anchor)
+            iou = calculate_bb_iou(bb, anchor)
             if max_iou < iou:
                 max_anchor = anchor
                 max_index = idx
@@ -618,7 +715,7 @@ class YoloLossLayer(Layer):
         wh_delta    = xywh_mask   * (pred_box_wh-true_box_wh) * wh_scale
         conf_delta  = object_mask * (pred_box_conf-true_box_conf) * 5 + (1-object_mask) * conf_delta
         class_delta = object_mask * \
-                      tf.expand_dims(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=true_box_class, logits=pred_box_class), 4)
+                      tf.expand_dims(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=true_box_class, logits=pred_box_class), 4) #regression
 
         loss_xy    = tf.reduce_sum(tf.square(xy_delta), list(range(1,5)))
         loss_wh    = tf.reduce_sum(tf.square(wh_delta), list(range(1,5)))
