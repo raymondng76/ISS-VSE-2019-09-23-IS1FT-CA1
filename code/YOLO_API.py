@@ -45,6 +45,7 @@ class YoloV3_API():
     def __init__(self, img_dir, annotation_dir, saved_model_name, train_size, height=416, width=416, threshold=0.5, batch_size=16, shuffle=True):
         '''Ctor'''
         self.saved_model_name=saved_model_name
+        self.threshold=threshold
         print(f'Image directory: {img_dir}')
         print(f'Annotation directory: {annotation_dir}')
         print(f'Saved model name: {self.saved_model_name}')
@@ -94,7 +95,7 @@ class YoloV3_API():
             max_boxes=self.max_boxes)
 
         print('Loading pretrained weights')
-        self.train_model.load_weights('Yolov3_pretrained_weights.h5', by_name=True)
+        # self.train_model.load_weights('Yolov3_pretrained_weights.h5', by_name=True)
 
         print(f'YOLOv3 Training Model created: To access, use <YoloV3_API.train_model>')
         print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>\n')
@@ -123,53 +124,120 @@ class YoloV3_API():
 
     def predict(self, img_path):
         '''Predict image using inference model'''
-        pass
         # Load weights to inference model
-        # self._load_weights_to_infer_model()
-        # # Read image
-        # image = cv2.imread(img_path)
-        # img_height, img_width, _ = image[0].shape
-        # imgRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        self._load_weights_to_infer_model()
 
-        # if (float(self.width)/img_width) < (float(self.height)/img_height):
-        #     rescale_height = (img_height * self.width) // img_width
-        #     rescale_width = img_width
-        # else:
-        #     rescale_width = (img_width * self.height) // img_height
-        #     rescale_height = img_height
+        # Read image
+        image = cv2.imread(img_path)
+        img_height, img_width, _ = image[0].shape
+        imgRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Rescale image
+        if (float(self.width)/img_width) < (float(self.height)/img_height):
+            rescale_height = (img_height * self.width) // img_width
+            rescale_width = img_width
+        else:
+            rescale_width = (img_width * self.height) // img_height
+            rescale_height = img_height
         
-        # img_resized = cv2.resize(imgRGB/255., (rescale_width, rescale_height))
-        # img = np.ones((self.height, self.width, 3)) * 0.5
-        # img[(self.height - rescale_height)//2 : (self.height + rescale_height)//2, (self.width - rescale_width)//2 : (self.width + rescale_width)//2, :] = img_resized
-        # img = np.expand_dims(img, 0)
+        img_resized = cv2.resize(imgRGB/255., (rescale_width, rescale_height))
+        img = np.ones((self.height, self.width, 3)) * 0.5
+        img[(self.height - rescale_height)//2 : (self.height + rescale_height)//2, (self.width - rescale_width)//2 : (self.width + rescale_width)//2, :] = img_resized
+        img = np.expand_dims(img, 0)
 
-        # self._load_weights_to_infer_model()
-        # pred = self.infer_model.predict(img)
+        # Predict image
+        pred = self.infer_model.predict(img)
 
-        # pred_boxes = []
-        # for lyr in range(len(pred)):
-        #     currPred = pred[lyr][0]
-        #     lyr_anchors = self.anchor_boxes[(2 - lyr) * 6 : (3 - lyr) * 6]
-        #     grid_height, grid_width = pred.shape[:2]
-        #     box_count = 3
-        #     output = pred.reshape((grid_height, grid_width, box_count, -1))
+        # Process predicted bounding boxes
+        for lyr in range(len(pred)):
+            currPred = pred[lyr][0]
+            lyr_anchors = self.anchor_boxes[(2 - lyr) * 6 : (3 - lyr) * 6]
+            grid_height, grid_width = currPred.shape[:2]
+            box_count = 3 # 3 bounding boxes per cell
+            output = currPred.reshape((grid_height, grid_width, box_count, -1))
 
-        #     pred_boxes = []
-        #     pred[...,:2] = expit
+            pred_boxes = []
+            currPred[...,:2] = expit(currPred[..., :2])
+            currPred[..., 4] = expit(currPred[..., 4])
+            currPred[..., 5:] = currPred[..., 4][..., np.newaxis] * _softmax(currPred[..., 5:])
+            currPred[..., 5:] *= currPred[..., 5:] > self.threshold
+
+            for cell in range(grid_height * grid_width):
+                row, col = cell // grid_width, cell % grid_width
+                for box in range(box_count):
+                    objectiveness_score = currPred[row, col, box, 4]
+                    if (objectiveness_score <= self.threshold): continue # Skip if objectiveness score too low
+                    x, y, w, h = currPred[row, col, box, :4]
+                    x = (col + x) / grid_width
+                    y = (row + y) / grid_height
+                    w = lyr_anchors[2*box] * np.exp(w) / self.width
+                    h = lyr_anchors[2*box+1] * np.exp(h) / self.height
+
+                    classes = currPred[row, col, box, 5:]
+                    predbox = BoundingBox(
+                        xmin=x-w/2,
+                        xmax=x+w/2,
+                        ymin=y-h/2,
+                        ymax=y+h/2,
+                        objectiveness_score=objectiveness_score,
+                        classes=classes)
+                    pred_boxes.append(predbox)
+        
+        # Fix bounding box scale
+        pred_boxes = self._scale_predicted_boxes(pred_boxes, img_height, img_width)
+        pred_boxes = self._non_max_suppression(pred_boxes, 0.4)
+        return pred_boxes
     
+    # https://stackoverflow.com/questions/34968722/how-to-implement-the-softmax-function-in-python
+    def _softmax(self, x, axis=-1):
+        '''Calculate softmax'''
+        x = x - np.amax(x, axis, keepdims=True)
+        e_x = np.exp(x)
+        return e_x / e_x.sum(axis, keepdims=True)
+    
+    def _scale_predicted_boxes(self, boxes, image_height, image_width):
+        bboxes = boxes
+        if (float(self.width)/image_width) < (float(self.height)/image_height):
+            height = (image_height * self.width) / image_width
+            width = self.width
+        else:
+            height = self.width
+            width = (image_width * self.height) / image_height
+            
+        for i in range(len(bboxes)):
+            xOffset = (self.width - width)/2./self.width
+            xScale = float(width)/self.width
+            yOffset = (self.height - height)/2./self.height 
+            yScale = float(height)/self.height
+            
+            bboxes[i].xmin = int((bboxes[i].xmin - xOffset) / xScale * image_width)
+            bboxes[i].xmax = int((bboxes[i].xmax - xOffset) / xScale * image_width)
+            bboxes[i].ymin = int((bboxes[i].ymin - yOffset) / yScale * image_height)
+            bboxes[i].ymax = int((bboxes[i].ymax - yOffset) / yScale * image_height)
+        return bboxes
 
-    def _non_max_suppression(self, bboxes, threshold):
+    def _non_max_suppression(self, boxes, threshold):
         '''Perform non max suppression on bounding boxes'''
-        # num_classes = len(boxes[0].label)
-        pass
+        bboxes = boxes
+        if len(bboxes) > 0:
+            nb_class = len(bboxes[0].classes)
+        else:
+            return
+        
+        for c in range(nb_class):
+            sorted_indices = np.argsort([-box.classes[c] for box in bboxes])
 
-    def _prepare_input_img(self, img_path):
-        '''Prep input img to correct dimension and size'''
-        expected_height, expected_width = 416, 416
-        img = cv2.imread(img_path)
-        img_resized = cv2.resize(img[:,:,::-1]/255, (expected_width, expected_height))
-        input_img = np.expand_dims(img_resized, 0) # Dimension = (1, 416, 416, 3)
-        return input_img
+            for i in range(len(sorted_indices)):
+                index_i = sorted_indices[i]
+
+                if bboxes[index_i].classes[c] == 0: continue
+
+                for j in range(i+1, len(sorted_indices)):
+                    index_j = sorted_indices[j]
+
+                    if calculate_bb_iou(bboxes[index_i], bboxes[index_j]) >= threshold:
+                        bboxes[index_j].classes[c] = 0
+        return bboxes
 
     def _load_weights_to_infer_model(self):
         '''Load saved weights to inference model'''
@@ -197,13 +265,14 @@ class YoloV3_API():
 #----------Bounding Box class and utils----------
 #%%
 class BoundingBox:
-    def __init__(self, xmin, xmax, ymin, ymax, classes=None, label=None):
+    def __init__(self, xmin, xmax, ymin, ymax, objectiveness_score=None, classes=None, label=None):
         self.xmin=xmin
         self.xmax=xmax
         self.ymin=ymin
         self.ymax=ymax
-        self.label=label
+        self.objectiveness_score=objectiveness_score
         self.classes=classes
+        self.label=label
     
     def __str__(self):
         return f'xmin: {self.xmin}, xmax: {self.xmax}, ymin: {self.ymin}, ymax: {self.ymax}, label: {self.label}'
