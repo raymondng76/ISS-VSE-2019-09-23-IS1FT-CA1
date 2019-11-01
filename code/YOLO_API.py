@@ -46,6 +46,8 @@ class YoloV3_API():
         '''Ctor'''
         self.saved_model_name=saved_model_name
         self.threshold=threshold
+        self.height=height
+        self.width=width
         print(f'Image directory: {img_dir}')
         print(f'Annotation directory: {annotation_dir}')
         print(f'Saved model name: {self.saved_model_name}')
@@ -129,25 +131,27 @@ class YoloV3_API():
 
         # Read image
         image = cv2.imread(img_path)
-        img_height, img_width, _ = image[0].shape
-        imgRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Rescale image
-        if (float(self.width)/img_width) < (float(self.height)/img_height):
-            rescale_height = (img_height * self.width) // img_width
-            rescale_width = img_width
-        else:
-            rescale_width = (img_width * self.height) // img_height
-            rescale_height = img_height
+        img_height, img_width, _ = image.shape
+        img = self._preprocess_input(image)
         
-        img_resized = cv2.resize(imgRGB/255., (rescale_width, rescale_height))
-        img = np.ones((self.height, self.width, 3)) * 0.5
-        img[(self.height - rescale_height)//2 : (self.height + rescale_height)//2, (self.width - rescale_width)//2 : (self.width + rescale_width)//2, :] = img_resized
-        img = np.expand_dims(img, 0)
+
+        # # Rescale image
+        # if (float(self.width)/img_width) < (float(self.height)/img_height):
+        #     rescale_height = (img_height * self.width) // img_width
+        #     rescale_width = img_width
+        # else:
+        #     rescale_width = (img_width * self.height) // img_height
+        #     rescale_height = img_height
+
+        # imgRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # img_resized = cv2.resize(imgRGB/255., (rescale_width, rescale_height))
+        # img = np.ones((self.height, self.width, 3)) * 0.5
+        # img[(self.height - rescale_height)//2 : (self.height + rescale_height)//2, (self.width - rescale_width)//2 : (self.width + rescale_width)//2, :] = img_resized
+        # img = np.expand_dims(img, 0)
 
         # Predict image
         pred = self.infer_model.predict(img)
-
+        print(pred)
         # Process predicted bounding boxes
         for lyr in range(len(pred)):
             currPred = pred[lyr][0]
@@ -159,7 +163,7 @@ class YoloV3_API():
             pred_boxes = []
             currPred[...,:2] = expit(currPred[..., :2])
             currPred[..., 4] = expit(currPred[..., 4])
-            currPred[..., 5:] = currPred[..., 4][..., np.newaxis] * _softmax(currPred[..., 5:])
+            currPred[..., 5:] = currPred[..., 4][..., np.newaxis] * self._softmax(currPred[..., 5:])
             currPred[..., 5:] *= currPred[..., 5:] > self.threshold
 
             for cell in range(grid_height * grid_width):
@@ -188,6 +192,28 @@ class YoloV3_API():
         pred_boxes = self._non_max_suppression(pred_boxes, 0.4)
         return pred_boxes
     
+    def _preprocess_input(self, image):
+        img_height, img_width, _ = image.shape
+
+        # determine the new size of the image
+        if (float(self.width)/img_width) < (float(self.height)/img_height):
+            img_height = (img_height * self.width)//img_width
+            img_width = self.width
+        else:
+            img_width = (img_width * self.height)//img_height
+            img_height = self.height
+
+        # resize the image to the new size
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        resized = cv2.resize(image/255., (img_width, img_height))
+
+        # embed the image into the standard letter box
+        new_image = np.ones((self.height, self.width, 3)) * 0.5
+        new_image[(self.height-img_height)//2:(self.height+img_height)//2, (self.width-img_width)//2:(self.width+img_width)//2, :] = resized
+        new_image = np.expand_dims(new_image, 0)
+
+        return new_image
+
     # https://stackoverflow.com/questions/34968722/how-to-implement-the-softmax-function-in-python
     def _softmax(self, x, axis=-1):
         '''Calculate softmax'''
