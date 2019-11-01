@@ -93,13 +93,14 @@ class YoloV3_API():
             threshold=threshold,
             max_boxes=self.max_boxes)
 
-        self.train_model.load_weights('Yolov3_pretrained_weights.h5')
+        print('Loading pretrained weights')
+        # self.train_model.load_weights('Yolov3_pretrained_weights.h5')
 
         print(f'YOLOv3 Training Model created: To access, use <YoloV3_API.train_model>')
         print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>\n')
         print('Train Model Summary')
         print(self.train_model.summary())
-        print('\nValidation Model Summary')
+        print('\Inference Model Summary')
         print(self.infer_model.summary())
         
     def fit_generator(self, epoch=300, lr=1e-4):
@@ -121,7 +122,7 @@ class YoloV3_API():
         return history
 
     def predict(self, img_path):
-        '''Predict all images in test folder using inference model'''
+        '''Predict image using inference model'''
         pass
         # Load weights to inference model
         # self._load_weights_to_infer_model()
@@ -432,6 +433,7 @@ class DataGenerator(Sequence):
             curr_indices = len(self.annotations)
             next_indices = curr_indices - self.batch_size
         input_images = np.zeros((next_indices - curr_indices, height, width, 3))
+        test_images = np.zeros((next_indices - curr_indices, height, width, 3))
         groundtruths = np.zeros((next_indices - curr_indices, 1, 1, 1, self.max_boxes, 4))
 
         yolo_bigout = np.zeros((next_indices - curr_indices, grid_height, grid_width, len(self.anchors)//3, 5+len(self.labels)))
@@ -483,6 +485,10 @@ class DataGenerator(Sequence):
                 true_box_idx = true_box_idx % self.max_boxes
             input_images[img_count] = img/255
             img_count += 1
+            for box in bbs.bounding_boxes:
+                cv2.rectangle(img,(box.x1,box.y1), (box.x2, box.y2), (255,0,0), 3)
+                cv2.putText(img, box.label, (box.x1+2, box.y1+12), 0, 1.2e-3 * img.shape[0], (0,255,0),2)
+                ia.imshow(img)
         return [input_images, groundtruths, yolo_bigout, yolo_midout, yolo_smallout], [yolo_loss1, yolo_loss2, yolo_loss3]    
 
     def _get_best_anchor(self, boundbox):
