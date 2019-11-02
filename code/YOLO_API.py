@@ -637,8 +637,10 @@ class DataGenerator(Sequence):
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
                 yolo_grid_height, yolo_grid_width = yolo_out.shape[1:3]
-                centerX = (0.5 * (box.xmin + box.xmax)) / (float(width) * yolo_grid_width)
-                centerY = (0.5 * (box.ymin + box.ymax)) / (float(height) * yolo_grid_height)
+                centerX = .5*(box.xmin + box.xmax)
+                centerX = centerX / float(width) * yolo_grid_width
+                centerY = .5*(box.ymin + box.ymax)
+                centerY = centerY / float(height) * yolo_grid_height
                 w = np.log((box.xmax - box.xmin) / float(max_anchor.xmax))
                 h = np.log((box.ymax - box.ymin) / float(max_anchor.ymax))
                 yolobox = [centerX, centerY, w, h]
