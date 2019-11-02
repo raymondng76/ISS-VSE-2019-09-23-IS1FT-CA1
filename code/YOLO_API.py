@@ -97,7 +97,7 @@ class YoloV3_API():
             max_boxes=self.max_boxes)
 
         print('Loading pretrained weights')
-        # self.train_model.load_weights('Yolov3_pretrained_weights.h5', by_name=True)
+        self.train_model.load_weights('Yolov3_pretrained_weights.h5', by_name=True)
 
         print(f'YOLOv3 Training Model created: To access, use <YoloV3_API.train_model>')
         print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>\n')
