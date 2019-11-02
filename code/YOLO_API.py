@@ -345,39 +345,6 @@ def calculate_bb_iou(boundbox1, boundbox2):
     intersect = xIntersect * yIntersect
     union = ((boundbox1.xmax - boundbox1.xmin) * (boundbox1.ymax - boundbox1.ymin)) + ((boundbox2.xmax - boundbox2.xmin) * (boundbox2.ymax - boundbox2.ymin)) - intersect
     return float(intersect) / union
-
-def draw_boxes(image, boxes, labels, obj_thresh):
-    for box in boxes:
-        print(box.classes)
-        label_str = ''
-        label = -1
-        
-        for i in range(len(labels)):
-            if box.classes[i] > obj_thresh:
-                if label_str != '': label_str += ', '
-                label_str += (labels[i] + ' ' + str(round(box.get_score()*100, 2)) + '%')
-                print('label_str')
-                label = i
-                
-        if label >= 0:
-            print('have label')
-            text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, 1.1e-3 * image.shape[0], 5)
-            width, height = text_size[0][0], text_size[0][1]
-            region = np.array([[box.xmin-3,        box.ymin], 
-                               [box.xmin-3,        box.ymin-height-26], 
-                               [box.xmin+width+13, box.ymin-height-26], 
-                               [box.xmin+width+13, box.ymin]], dtype='int32')  
-
-            cv2.rectangle(img=image, pt1=(box.xmin,box.ymin), pt2=(box.xmax,box.ymax), color=(255,0,0), thickness=5)
-            cv2.fillPoly(img=image, pts=[region], color=(255,0,0))
-            cv2.putText(img=image, 
-                        text=label_str, 
-                        org=(box.xmin+13, box.ymin - 13), 
-                        fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
-                        fontScale=1e-3 * image.shape[0], 
-                        color=(0,0,0), 
-                        thickness=2)
-    return image        
 #------------------------------------------------
 #%%
 #----------VOC Parser----------
