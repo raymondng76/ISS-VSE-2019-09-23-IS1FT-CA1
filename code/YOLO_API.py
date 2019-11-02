@@ -591,7 +591,7 @@ class DataGenerator(Sequence):
         if (rescale_height + padIdx_Y) < currHeight:
             img_resized = np.pad(array=img_resized,
                                 pad_width=((0,currHeight - (rescale_height + padIdx_Y)),(0,0),(0,0)),
-                                constant_values=127,
+                                constant_values=0,
                                 mode='constant')
         img_resized =  img_resized[:currHeight, :currWidth, :]
         bbs_resized = self._multi_scale_boundingboxes(bbs, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_height, img_width)
@@ -650,12 +650,11 @@ class DataGenerator(Sequence):
                 yolo_out[img_count, gridY, gridX, max_index%3, 0:4] = yolobox
                 yolo_out[img_count, gridY, gridX, max_index%3, 4] = 1.
                 yolo_out[img_count, gridY, gridX, max_index%3, 5+anno_idx] = 1
-
                 true_box = [centerX, centerY, box.xmax - box.xmin, box.ymax - box.ymin]
                 groundtruths[img_count, 0, 0, 0, true_box_idx] = true_box
                 true_box_idx += 1
                 true_box_idx = true_box_idx % self.max_boxes
-            
+
             # For checking on image and boundingbox scale
             # for b in bbs:
             #     cv2.rectangle(img, (b.xmin,b.ymin), (b.xmax, b.ymax), (255,0,0),3)
@@ -732,12 +731,15 @@ class YoloLossLayer(Layer):
     def build(self, input_shape):
         super(YoloLossLayer, self).build(input_shape)
     
+    def compute_output_shape(self, input_shape):
+        return [(None, 1)]
+    
     def call(self, x):
         input_img, y_pred, y_true, true_boxes = x
 
         y_pred = tf.reshape(y_pred, tf.concat([tf.shape(y_pred)[:3], tf.constant([3, -1])], axis=0))
         object_mask     = tf.expand_dims(y_true[..., 4], 4)
-        batch_seen = tf.Variable(0.)
+        
         grid_h      = tf.shape(y_true)[1]
         grid_w      = tf.shape(y_true)[2]
         grid_factor = tf.reshape(tf.cast([grid_w, grid_h], tf.float32), [1,1,1,1,2])
@@ -782,20 +784,20 @@ class YoloLossLayer(Layer):
 
         best_ious   = tf.reduce_max(iou_scores, axis=4)        
         conf_delta *= tf.expand_dims(tf.to_float(best_ious < self.threshold), 4)
-        batch_seen = tf.assign_add(batch_seen, 1.)
+        # batch_seen = tf.assign_add(batch_seen, 1.)
         
-        true_box_xy, true_box_wh, xywh_mask = tf.cond(tf.less(batch_seen, 1), 
-                              lambda: [true_box_xy + (0.5 + self.cell_grid[:,:grid_h,:grid_w,:,:]) * (1-object_mask), 
-                                       true_box_wh + tf.zeros_like(true_box_wh) * (1-object_mask), 
-                                       tf.ones_like(object_mask)],
-                              lambda: [true_box_xy, 
-                                       true_box_wh,
-                                       object_mask])
+        # true_box_xy, true_box_wh, xywh_mask = tf.cond(tf.less(batch_seen, 1), 
+        #                       lambda: [true_box_xy + (0.5 + self.cell_grid[:,:grid_h,:grid_w,:,:]) * (1-object_mask), 
+        #                                true_box_wh + tf.zeros_like(true_box_wh) * (1-object_mask), 
+        #                                tf.ones_like(object_mask)],
+        #                       lambda: [true_box_xy, 
+        #                                true_box_wh,
+        #                                object_mask])
         wh_scale = tf.exp(true_box_wh) * self.anchors / net_factor
         wh_scale = tf.expand_dims(2 - wh_scale[..., 0] * wh_scale[..., 1], axis=4)
 
-        xy_delta    = xywh_mask   * (pred_box_xy-true_box_xy) * wh_scale
-        wh_delta    = xywh_mask   * (pred_box_wh-true_box_wh) * wh_scale
+        xy_delta    = object_mask   * (pred_box_xy-true_box_xy) * wh_scale
+        wh_delta    = object_mask   * (pred_box_wh-true_box_wh) * wh_scale
         conf_delta  = object_mask * (pred_box_conf-true_box_conf) * 5 + (1-object_mask) * conf_delta
         class_delta = object_mask * \
                       tf.expand_dims(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=true_box_class, logits=pred_box_class), 4) #regression
