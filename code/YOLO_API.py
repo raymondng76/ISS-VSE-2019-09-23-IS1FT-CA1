@@ -191,7 +191,8 @@ class YoloV3_API():
         # Fix bounding box scale
         self._scale_predicted_boxes(pred_boxes, img_height, img_width)
         self._non_max_suppression(pred_boxes, 0.4)
-        return pred_boxes
+        draw_boxes(image, pred_boxes, list(self.labels), 0.4)
+        return image
     
     def _preprocess_input(self, image):
         img_height, img_width, _ = image.shape
@@ -223,7 +224,6 @@ class YoloV3_API():
         return e_x / e_x.sum(axis, keepdims=True)
     
     def _scale_predicted_boxes(self, boxes, image_height, image_width):
-        # bboxes = boxes
         if (float(self.width)/image_width) < (float(self.height)/image_height):
             height = (image_height * self.width) / image_width
             width = self.width
@@ -241,11 +241,9 @@ class YoloV3_API():
             boxes[i].xmax = int((boxes[i].xmax - xOffset) / xScale * image_width)
             boxes[i].ymin = int((boxes[i].ymin - yOffset) / yScale * image_height)
             boxes[i].ymax = int((boxes[i].ymax - yOffset) / yScale * image_height)
-        # return bboxes
 
     def _non_max_suppression(self, boxes, threshold):
         '''Perform non max suppression on bounding boxes'''
-        # bboxes = boxes
         if len(boxes) > 0:
             nb_class = len(boxes[0].classes)
         else:
@@ -264,7 +262,6 @@ class YoloV3_API():
 
                     if calculate_bb_iou(boxes[index_i], boxes[index_j]) >= threshold:
                         boxes[index_j].classes[c] = 0
-        # return bboxes
 
     def _load_weights_to_infer_model(self):
         '''Load saved weights to inference model'''
@@ -302,7 +299,7 @@ class BoundingBox:
         self.label=label
     
     def __str__(self):
-        return f'xmin: {self.xmin}, xmax: {self.xmax}, ymin: {self.ymin}, ymax: {self.ymax}, label: {self.label}'
+        return f'xmin: {self.xmin}, xmax: {self.xmax}, ymin: {self.ymin}, ymax: {self.ymax}, objectiveness: {self.objectiveness_score}, classes: {self.classes}, label: {self.label}'
     
     def get_label(self):
         if self.label == -1:
@@ -342,36 +339,39 @@ def calculate_bb_iou(boundbox1, boundbox2):
     union = ((boundbox1.xmax - boundbox1.xmin) * (boundbox1.ymax - boundbox1.ymin)) + ((boundbox2.xmax - boundbox2.xmin) * (boundbox2.ymax - boundbox2.ymin)) - intersect
     return float(intersect) / union
 
-# def draw_boxes(image, boxes, labels, obj_thresh):
-#     for box in boxes:
-#         # label_str = ''
-#         # label = -1
+def draw_boxes(image, boxes, labels, obj_thresh):
+    for box in boxes:
+        print(box.classes)
+        label_str = ''
+        label = -1
         
-#         # for i in range(len(labels)):
-#         #     if box.classes[i] > obj_thresh:
-#         #         if label_str != '': label_str += ', '
-#         #         label_str += (labels[i] + ' ' + str(round(box.get_score()*100, 2)) + '%')
-#         #         label = i
+        for i in range(len(labels)):
+            if box.classes[i] > obj_thresh:
+                if label_str != '': label_str += ', '
+                label_str += (labels[i] + ' ' + str(round(box.get_score()*100, 2)) + '%')
+                print('label_str')
+                label = i
                 
-#         # if label >= 0:
-#         #     text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, 1.1e-3 * image.shape[0], 5)
-#         #     width, height = text_size[0][0], text_size[0][1]
-#         #     region = np.array([[box.xmin-3,        box.ymin], 
-#         #                        [box.xmin-3,        box.ymin-height-26], 
-#         #                        [box.xmin+width+13, box.ymin-height-26], 
-#         #                        [box.xmin+width+13, box.ymin]], dtype='int32')  
+        if label >= 0:
+            print('have label')
+            text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, 1.1e-3 * image.shape[0], 5)
+            width, height = text_size[0][0], text_size[0][1]
+            region = np.array([[box.xmin-3,        box.ymin], 
+                               [box.xmin-3,        box.ymin-height-26], 
+                               [box.xmin+width+13, box.ymin-height-26], 
+                               [box.xmin+width+13, box.ymin]], dtype='int32')  
 
-#             cv2.rectangle(img=image, pt1=(box.xmin,box.ymin), pt2=(box.xmax,box.ymax), color=(255,0,0), thickness=5)
-#             cv2.fillPoly(img=image, pts=[region], color=(255,0,0))
-#             cv2.putText(img=image, 
-#                         text=label_str, 
-#                         org=(box.xmin+13, box.ymin - 13), 
-#                         fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
-#                         fontScale=1e-3 * image.shape[0], 
-#                         color=(0,0,0), 
-#                         thickness=2)
+            cv2.rectangle(img=image, pt1=(box.xmin,box.ymin), pt2=(box.xmax,box.ymax), color=(255,0,0), thickness=5)
+            cv2.fillPoly(img=image, pts=[region], color=(255,0,0))
+            cv2.putText(img=image, 
+                        text=label_str, 
+                        org=(box.xmin+13, box.ymin - 13), 
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
+                        fontScale=1e-3 * image.shape[0], 
+                        color=(0,0,0), 
+                        thickness=2)
         
-#     return image        
+    return image        
 #------------------------------------------------
 #%%
 #----------VOC Parser----------
