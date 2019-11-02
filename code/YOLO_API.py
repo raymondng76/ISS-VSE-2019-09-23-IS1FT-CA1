@@ -665,7 +665,7 @@ class DataGenerator(Sequence):
             #                     (0,255,0), 2)
             input_images[img_count] = img/255
             img_count += 1
-        return [input_images, bbs,groundtruths, yolo_bigout, yolo_midout, yolo_smallout], [yolo_loss1, yolo_loss2, yolo_loss3]    
+        return [input_images, groundtruths, yolo_bigout, yolo_midout, yolo_smallout], [yolo_loss1, yolo_loss2, yolo_loss3]    
 
     def _get_best_anchor(self, boundbox):
         '''Compare bounding box with all anchors and find best match'''
@@ -782,7 +782,6 @@ class YoloLossLayer(Layer):
 
         best_ious   = tf.reduce_max(iou_scores, axis=4)        
         conf_delta *= tf.expand_dims(tf.to_float(best_ious < self.threshold), 4)
-        true_xy = true_box_xy / grid_factor
         batch_seen = tf.assign_add(batch_seen, 1.)
         
         true_box_xy, true_box_wh, xywh_mask = tf.cond(tf.less(batch_seen, 1), 
