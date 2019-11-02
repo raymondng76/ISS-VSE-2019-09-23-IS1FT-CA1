@@ -148,13 +148,14 @@ class YoloV3_API():
         # img = np.ones((self.height, self.width, 3)) * 0.5
         # img[(self.height - rescale_height)//2 : (self.height + rescale_height)//2, (self.width - rescale_width)//2 : (self.width + rescale_width)//2, :] = img_resized
         # img = np.expand_dims(img, 0)
-
+        
         # Predict image
         pred = self.infer_model.predict(img)
-        print(pred)
+        # print(pred)
         # Process predicted bounding boxes
         for lyr in range(len(pred)):
-            currPred = pred[lyr][0]
+            currPred = pred[lyr]
+            print(currPred.shape)
             lyr_anchors = self.anchor_boxes[(2 - lyr) * 6 : (3 - lyr) * 6]
             grid_height, grid_width = currPred.shape[:2]
             box_count = 3 # 3 bounding boxes per cell
@@ -188,8 +189,8 @@ class YoloV3_API():
                     pred_boxes.append(predbox)
         
         # Fix bounding box scale
-        pred_boxes = self._scale_predicted_boxes(pred_boxes, img_height, img_width)
-        pred_boxes = self._non_max_suppression(pred_boxes, 0.4)
+        self._scale_predicted_boxes(pred_boxes, img_height, img_width)
+        self._non_max_suppression(pred_boxes, 0.4)
         return pred_boxes
     
     def _preprocess_input(self, image):
@@ -222,7 +223,7 @@ class YoloV3_API():
         return e_x / e_x.sum(axis, keepdims=True)
     
     def _scale_predicted_boxes(self, boxes, image_height, image_width):
-        bboxes = boxes
+        # bboxes = boxes
         if (float(self.width)/image_width) < (float(self.height)/image_height):
             height = (image_height * self.width) / image_width
             width = self.width
@@ -230,40 +231,40 @@ class YoloV3_API():
             height = self.width
             width = (image_width * self.height) / image_height
             
-        for i in range(len(bboxes)):
+        for i in range(len(boxes)):
             xOffset = (self.width - width)/2./self.width
             xScale = float(width)/self.width
             yOffset = (self.height - height)/2./self.height 
             yScale = float(height)/self.height
             
-            bboxes[i].xmin = int((bboxes[i].xmin - xOffset) / xScale * image_width)
-            bboxes[i].xmax = int((bboxes[i].xmax - xOffset) / xScale * image_width)
-            bboxes[i].ymin = int((bboxes[i].ymin - yOffset) / yScale * image_height)
-            bboxes[i].ymax = int((bboxes[i].ymax - yOffset) / yScale * image_height)
-        return bboxes
+            boxes[i].xmin = int((boxes[i].xmin - xOffset) / xScale * image_width)
+            boxes[i].xmax = int((boxes[i].xmax - xOffset) / xScale * image_width)
+            boxes[i].ymin = int((boxes[i].ymin - yOffset) / yScale * image_height)
+            boxes[i].ymax = int((boxes[i].ymax - yOffset) / yScale * image_height)
+        # return bboxes
 
     def _non_max_suppression(self, boxes, threshold):
         '''Perform non max suppression on bounding boxes'''
-        bboxes = boxes
-        if len(bboxes) > 0:
-            nb_class = len(bboxes[0].classes)
+        # bboxes = boxes
+        if len(boxes) > 0:
+            nb_class = len(boxes[0].classes)
         else:
             return
         
         for c in range(nb_class):
-            sorted_indices = np.argsort([-box.classes[c] for box in bboxes])
+            sorted_indices = np.argsort([-box.classes[c] for box in boxes])
 
             for i in range(len(sorted_indices)):
                 index_i = sorted_indices[i]
 
-                if bboxes[index_i].classes[c] == 0: continue
+                if boxes[index_i].classes[c] == 0: continue
 
                 for j in range(i+1, len(sorted_indices)):
                     index_j = sorted_indices[j]
 
-                    if calculate_bb_iou(bboxes[index_i], bboxes[index_j]) >= threshold:
-                        bboxes[index_j].classes[c] = 0
-        return bboxes
+                    if calculate_bb_iou(boxes[index_i], boxes[index_j]) >= threshold:
+                        boxes[index_j].classes[c] = 0
+        # return bboxes
 
     def _load_weights_to_infer_model(self):
         '''Load saved weights to inference model'''
@@ -454,7 +455,6 @@ def calculate_kMeans(anno_arr, num_anchor):
             distance = 1 - calculate_iou(anno_arr[idx], sample_centroids)
             distances.append(distance)
         distances_arr = np.array(distances)
-        # print(f'iter: {iterations} distances: {np.sum(np.abs(curr_distances-distances_arr))}')
         assign_centroids = np.argmin(distances_arr, axis=1)
         if (assign_centroids == curr_assign_centroids).all():
             return sample_centroids
@@ -530,15 +530,11 @@ class DataGenerator(Sequence):
         if self.shuffle:
             np.random.shuffle(self.index)
     
-    def _augmentation_with_boundingboxes(self, images, bbs):
+    def _augmentation(self, images):
         '''Image augmentation with imgaug'''
         seq = iaa.Sequential([
-            # iaa.AdditiveGaussianNoise(scale=0.05*255),
-            # iaa.Sharpen(alpha=(0,1.0), lightness=(0.75,1.5)),
-            # iaa.LinearContrast((0.5, 2.0), per_channel=0.5),
-            # iaa.Invert(0.05, per_channel=True)
-            ])
-        return seq(images=images, bounding_boxes=bbs)
+            iaa.AdditiveGaussianNoise(scale=0.05*255)])
+        return seq(images=images)
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
     def _current_size(self, idx):
         '''Set the image size for the current image, change size every 10 image'''
@@ -555,7 +551,6 @@ class DataGenerator(Sequence):
 
     def _multi_scale_boundingboxes(self, boxes, rescale_height, rescale_width, currHeight, currWidth, padIdx_X, padIdx_Y, img_h, img_w):
         boxes = copy.deepcopy(boxes)
-        # boundboxes = boxes.bounding_boxes
 
         x_scale = float(rescale_width)/img_w
         y_scale = float(rescale_height)/img_h
@@ -652,7 +647,7 @@ class DataGenerator(Sequence):
             raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
             anno_bbs = anno['bbs']
             img, bbs = self._multi_scale_image(raw_img, anno_bbs, height, width)
-            # img, bbs = self._augmentation_with_boundingboxes(img, bbs)
+            img = self._augmentation(img)
             for box in bbs:
                 max_anchor, max_index = self._get_best_anchor(box)
                 yolo_out = all_out[max_index//3]
@@ -675,9 +670,17 @@ class DataGenerator(Sequence):
                 groundtruths[img_count, 0, 0, 0, true_box_idx] = true_box
                 true_box_idx += 1
                 true_box_idx = true_box_idx % self.max_boxes
+            
+            # For checking on image and boundingbox scale
+            # for b in bbs:
+            #     cv2.rectangle(img, (b.xmin,b.ymin), (b.xmax, b.ymax), (255,0,0),3)
+            #     cv2.putText(img, b.label, 
+            #                     (b.xmin+2, b.ymin+12), 
+            #                     0, 1.2e-3 * img.shape[0], 
+            #                     (0,255,0), 2)
             input_images[img_count] = img/255
             img_count += 1
-        return [input_images, groundtruths, yolo_bigout, yolo_midout, yolo_smallout], [yolo_loss1, yolo_loss2, yolo_loss3]    
+        return [input_images, bbs,groundtruths, yolo_bigout, yolo_midout, yolo_smallout], [yolo_loss1, yolo_loss2, yolo_loss3]    
 
     def _get_best_anchor(self, boundbox):
         '''Compare bounding box with all anchors and find best match'''
