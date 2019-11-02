@@ -133,33 +133,17 @@ class YoloV3_API():
         image = cv2.imread(img_path)
         img_height, img_width, _ = image.shape
         img = self._preprocess_input(image)
-        
-
-        # # Rescale image
-        # if (float(self.width)/img_width) < (float(self.height)/img_height):
-        #     rescale_height = (img_height * self.width) // img_width
-        #     rescale_width = img_width
-        # else:
-        #     rescale_width = (img_width * self.height) // img_height
-        #     rescale_height = img_height
-
-        # imgRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        # img_resized = cv2.resize(imgRGB/255., (rescale_width, rescale_height))
-        # img = np.ones((self.height, self.width, 3)) * 0.5
-        # img[(self.height - rescale_height)//2 : (self.height + rescale_height)//2, (self.width - rescale_width)//2 : (self.width + rescale_width)//2, :] = img_resized
-        # img = np.expand_dims(img, 0)
-        
+               
         # Predict image
         pred = self.infer_model.predict(img)
-        # print(pred)
         # Process predicted bounding boxes
         for lyr in range(len(pred)):
-            currPred = pred[lyr]
+            currPred = pred[lyr][0]
             print(currPred.shape)
             lyr_anchors = self.anchor_boxes[(2 - lyr) * 6 : (3 - lyr) * 6]
             grid_height, grid_width = currPred.shape[:2]
             box_count = 3 # 3 bounding boxes per cell
-            output = currPred.reshape((grid_height, grid_width, box_count, -1))
+            currPred = currPred.reshape((grid_height, grid_width, box_count, -1))            
 
             pred_boxes = []
             currPred[...,:2] = expit(currPred[..., :2])
@@ -191,8 +175,8 @@ class YoloV3_API():
         # Fix bounding box scale
         self._scale_predicted_boxes(pred_boxes, img_height, img_width)
         self._non_max_suppression(pred_boxes, 0.4)
-        draw_boxes(image, pred_boxes, list(self.labels), 0.4)
-        return image
+        # draw_boxes(image, pred_boxes, list(self.labels), 0.4)
+        return image, pred_boxes
     
     def _preprocess_input(self, image):
         img_height, img_width, _ = image.shape
@@ -297,6 +281,7 @@ class BoundingBox:
         self.objectiveness_score=objectiveness_score
         self.classes=classes
         self.label=label
+        self.score=-1
     
     def __str__(self):
         return f'xmin: {self.xmin}, xmax: {self.xmax}, ymin: {self.ymin}, ymax: {self.ymax}, objectiveness: {self.objectiveness_score}, classes: {self.classes}, label: {self.label}'
