@@ -737,6 +737,7 @@ class YoloLossLayer(Layer):
 
         y_pred = tf.reshape(y_pred, tf.concat([tf.shape(y_pred)[:3], tf.constant([3, -1])], axis=0))
         object_mask     = tf.expand_dims(y_true[..., 4], 4)
+        batch_seen = tf.Variable(0.)
         grid_h      = tf.shape(y_true)[1]
         grid_w      = tf.shape(y_true)[2]
         grid_factor = tf.reshape(tf.cast([grid_w, grid_h], tf.float32), [1,1,1,1,2])
@@ -781,8 +782,8 @@ class YoloLossLayer(Layer):
 
         best_ious   = tf.reduce_max(iou_scores, axis=4)        
         conf_delta *= tf.expand_dims(tf.to_float(best_ious < self.threshold), 4)
-
-        batch_seen = tf.assign_add(tf.Variable(0.), 1.)
+        true_xy = true_box_xy / grid_factor
+        batch_seen = tf.assign_add(batch_seen, 1.)
         
         true_box_xy, true_box_wh, xywh_mask = tf.cond(tf.less(batch_seen, 1), 
                               lambda: [true_box_xy + (0.5 + self.cell_grid[:,:grid_h,:grid_w,:,:]) * (1-object_mask), 
