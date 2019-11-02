@@ -1,5 +1,7 @@
 # ISS VSE CA1
-
+# Kenneth Goh Chia Wei : A0198544N  
+# Tan Heng Han : A0198502B  
+# Raymond Ng Boon Cheong : A0198543R
 #%%
 import numpy as np
 import pandas as pd
@@ -15,7 +17,6 @@ import glob
 
 # import imgaug as ia
 from imgaug import augmenters as iaa
-
 from scipy.special import expit #sigmoid
 
 from keras import regularizers
@@ -42,7 +43,7 @@ from keras.optimizers import Adam
 #%%
 #---------- API for YoloV3 ----------
 class YoloV3_API():
-    def __init__(self, img_dir, annotation_dir, saved_model_name, train_size, height=416, width=416, threshold=0.5, batch_size=16, shuffle=True):
+    def __init__(self, img_dir, annotation_dir, saved_model_name, train_size, height=416, width=416, threshold=0.5, batch_size=16, shuffle=True, pretrained_weights='Yolov3_pretrained_weights.h5'):
         '''Ctor'''
         self.saved_model_name=saved_model_name
         self.threshold=threshold
@@ -97,7 +98,7 @@ class YoloV3_API():
             max_boxes=self.max_boxes)
 
         print('Loading pretrained weights')
-        self.train_model.load_weights('Yolov3_pretrained_weights.h5', by_name=True)
+        self.train_model.load_weights(pretrained_weights, by_name=True)
 
         print(f'YOLOv3 Training Model created: To access, use <YoloV3_API.train_model>')
         print(f'\nYOLOv3 Inference Model created: To access, use <YoloV3_API.infer_model>\n')
@@ -175,9 +176,31 @@ class YoloV3_API():
         # Fix bounding box scale
         self._scale_predicted_boxes(pred_boxes, img_height, img_width)
         self._non_max_suppression(pred_boxes, 0.4)
-        # draw_boxes(image, pred_boxes, list(self.labels), 0.4)
         return image, pred_boxes
     
+    def draw_prediction(self, img, predicted_boxes):
+        labels = list(self.labels)
+        for box in predicted_boxes:
+            label_str = ''
+            label_idx = -1
+            for idx in range(len(labels)):
+                if box.classes[idx] > self.threshold:
+                    if label_str != '':
+                        label_str += ', '
+                    label_str += (labels[idx] + ' ' + str(round(box.get_score()*100, 2)) + '%')
+                    label_idx = idx
+            if label_idx >= 0:
+                cv2.rectangle(img=img, pt1=(box.xmin,box.ymin), pt2=(box.xmax,box.ymax), color=(255,0,0), thickness=4)
+                text_size = cv2.getTextSize(label_str, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 5)
+                cv2.putText(img=img, 
+                        text=label_str, 
+                        org=(box.xmin+13, box.ymin-13), 
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
+                        fontScale=0.5, 
+                        color=(255,0,0), 
+                        thickness=2)
+        return img
+
     def _preprocess_input(self, image):
         img_height, img_width, _ = image.shape
 
@@ -197,7 +220,6 @@ class YoloV3_API():
         new_image = np.ones((self.height, self.width, 3)) * 0.5
         new_image[(self.height-img_height)//2:(self.height+img_height)//2, (self.width-img_width)//2:(self.width+img_width)//2, :] = resized
         new_image = np.expand_dims(new_image, 0)
-
         return new_image
 
     # https://stackoverflow.com/questions/34968722/how-to-implement-the-softmax-function-in-python
@@ -287,7 +309,7 @@ class BoundingBox:
         return f'xmin: {self.xmin}, xmax: {self.xmax}, ymin: {self.ymin}, ymax: {self.ymax}, objectiveness: {self.objectiveness_score}, classes: {self.classes}, label: {self.label}'
     
     def get_label(self):
-        if self.label == -1:
+        if self.label == None:
             self.label = np.argmax(self.classes)
         
         return self.label
@@ -355,7 +377,6 @@ def draw_boxes(image, boxes, labels, obj_thresh):
                         fontScale=1e-3 * image.shape[0], 
                         color=(0,0,0), 
                         thickness=2)
-        
     return image        
 #------------------------------------------------
 #%%
@@ -601,8 +622,8 @@ class DataGenerator(Sequence):
         '''Get input per batch'''
         height, width = self._current_size(index)
         grid_height, grid_width = height//self.basefactor, width//self.basefactor
-        curr_indices = index * self.batch_size # r_bound
-        next_indices = (index + 1) * self.batch_size # l_bound
+        curr_indices = index * self.batch_size
+        next_indices = (index + 1) * self.batch_size
         if curr_indices > len(self.annotations):
             curr_indices = len(self.annotations)
             next_indices = curr_indices - self.batch_size
@@ -622,12 +643,6 @@ class DataGenerator(Sequence):
         for anno in self.annotations[curr_indices:next_indices]: #Each image and annotations for current batch
             fileName = anno['filename']
             raw_img = cv2.imread(fileName)
-            try:
-                if raw_img == None:
-                    newfile = fileName.replace('.jpg', '.jpeg') # Work around for different extension
-                    raw_img = cv2.imread(newfile)
-            except:
-                pass
             
             raw_img = cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB)
             anno_bbs = anno['bbs']
@@ -786,15 +801,7 @@ class YoloLossLayer(Layer):
 
         best_ious   = tf.reduce_max(iou_scores, axis=4)        
         conf_delta *= tf.expand_dims(tf.to_float(best_ious < self.threshold), 4)
-        # batch_seen = tf.assign_add(batch_seen, 1.)
-        
-        # true_box_xy, true_box_wh, xywh_mask = tf.cond(tf.less(batch_seen, 1), 
-        #                       lambda: [true_box_xy + (0.5 + self.cell_grid[:,:grid_h,:grid_w,:,:]) * (1-object_mask), 
-        #                                true_box_wh + tf.zeros_like(true_box_wh) * (1-object_mask), 
-        #                                tf.ones_like(object_mask)],
-        #                       lambda: [true_box_xy, 
-        #                                true_box_wh,
-        #                                object_mask])
+
         wh_scale = tf.exp(true_box_wh) * self.anchors / net_factor
         wh_scale = tf.expand_dims(2 - wh_scale[..., 0] * wh_scale[..., 1], axis=4)
 
