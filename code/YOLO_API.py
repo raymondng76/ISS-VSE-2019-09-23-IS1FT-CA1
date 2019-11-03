@@ -132,6 +132,7 @@ class YoloV3_API():
 
         # Read image
         image = cv2.imread(img_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         img_height, img_width, _ = image.shape
         img = self._preprocess_input(image)
                
