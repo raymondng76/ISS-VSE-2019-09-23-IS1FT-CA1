@@ -141,7 +141,6 @@ class YoloV3_API():
         # Process predicted bounding boxes
         for lyr in range(len(pred)):
             currPred = pred[lyr][0]
-            print(currPred.shape)
             lyr_anchors = self.anchor_boxes[(2 - lyr) * 6 : (3 - lyr) * 6]
             grid_height, grid_width = currPred.shape[:2]
             box_count = 3 # 3 bounding boxes per cell
@@ -153,7 +152,7 @@ class YoloV3_API():
             currPred[..., 5:] = currPred[..., 4][..., np.newaxis] * self._softmax(currPred[..., 5:])
             currPred[..., 5:] *= currPred[..., 5:] > self.threshold
 
-            for cell in range(grid_height * grid_width):
+            for cell in range(grid_height * grid_width): # loop thru each cell
                 row, col = cell // grid_width, cell % grid_width
                 for box in range(box_count):
                     objectiveness_score = currPred[row, col, box, 4]
