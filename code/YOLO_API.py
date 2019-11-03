@@ -133,12 +133,16 @@ class YoloV3_API():
         # Read image
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        img_height, img_width, _ = image.shape
         img = self._preprocess_input(image)
                
         # Predict image
         pred = self.infer_model.predict(img)
+        pred_boxes = self.process_prediction(image, pred)
+        return image, pred_boxes
+    
+    def process_prediction(self, img, pred):
         # Process predicted bounding boxes
+        img_height, img_width, _ = img.shape
         for lyr in range(len(pred)):
             currPred = pred[lyr][0]
             lyr_anchors = self.anchor_boxes[(2 - lyr) * 6 : (3 - lyr) * 6]
@@ -176,8 +180,8 @@ class YoloV3_API():
         # Fix bounding box scale
         self._scale_predicted_boxes(pred_boxes, img_height, img_width)
         self._non_max_suppression(pred_boxes, 0.4)
-        return image, pred_boxes
-    
+        return pred_boxes
+
     def draw_prediction(self, img, predicted_boxes):
         labels = list(self.labels)
         for box in predicted_boxes:
